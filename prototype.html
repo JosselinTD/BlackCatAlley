@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Black Cat Alley - Prototype</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; background-color: #000; color: #fff; font-family: monospace; }
+        canvas { display: block; }
+        #info { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; }
+        a { color: #fff; }
+        #console-container { position: fixed; bottom: 0; left: 0; right: 0; height: 150px; background-color: rgba(0,0,0,0.7); color: #0f0; font-family: monospace; overflow-y: scroll; padding: 5px; z-index: 9999; border-top: 1px solid #333; }
+        #joystick-base { position: absolute; bottom: 20px; left: 20px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border-radius: 50%; display: none; }
+        #joystick-handle { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        Black Cat Alley - Prototype<br/>
+        (Cliquez et glissez pour regarder)
+    </div>
+    <button id="toggle-console" style="position: fixed; top: 10px; right: 10px; z-index: 10001; background: #333; color: #fff; border: 1px solid #fff; padding: 5px;">Toggle Console</button>
+    <div id="console-container"></div>
+    <div id="joystick-base"><div id="joystick-handle"></div></div>
+
+    <div id="joystick-base"><div id="joystick-handle"></div></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // From three.js/examples/jsm/webxr/VRButton.js
+        const VRButton = {
+            createButton: function (renderer) {
+                const button = document.createElement('button');
+                function showEnterVR() {
+                    let currentSession = null;
+                    async function onSessionStarted(session) {
+                        session.addEventListener('end', onSessionEnded);
+                        await renderer.xr.setSession(session);
+                        button.textContent = 'EXIT VR';
+                        currentSession = session;
+                    }
+                    function onSessionEnded() {
+                        currentSession.removeEventListener('end', onSessionEnded);
+                        button.textContent = 'ENTER VR';
+                        currentSession = null;
+                    }
+                    button.style.display = '';
+                    button.style.cursor = 'pointer';
+                    button.style.left = 'calc(50% - 50px)';
+                    button.style.width = '100px';
+                    button.textContent = 'ENTER VR';
+                    button.onclick = function () {
+                        if (currentSession === null) {
+                            navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] }).then(onSessionStarted);
+                        } else {
+                            currentSession.end();
+                        }
+                    };
+                }
+                function showWebXRNotFound() {
+                    button.style.display = '';
+                    button.style.cursor = 'auto';
+                    button.style.left = 'calc(50% - 75px)';
+                    button.style.width = '150px';
+                    button.textContent = 'VR NOT SUPPORTED';
+                    button.onclick = null;
+                }
+                button.id = 'VRButton';
+                button.style.display = 'none';
+                button.style.position = 'absolute';
+                button.style.bottom = '20px';
+                button.style.padding = '12px 6px';
+                button.style.border = '1px solid #fff';
+                button.style.borderRadius = '4px';
+                button.style.background = 'rgba(0,0,0,0.1)';
+                button.style.color = '#fff';
+                button.style.font = 'normal 13px sans-serif';
+                button.style.textAlign = 'center';
+                button.style.opacity = '0.5';
+                button.style.outline = 'none';
+                button.style.zIndex = '999';
+                if ('xr' in navigator) {
+                    navigator.xr.isSessionSupported('immersive-vr').then(supported => supported ? showEnterVR() : showWebXRNotFound());
+                } else {
+                    const message = document.createElement('a');
+                    if (window.isSecureContext === false) {
+                        message.href = document.location.href.replace(/^http:/, 'https:');
+                        message.innerHTML = 'WEBXR NEEDS HTTPS';
+                    } else {
+                        message.href = 'https://immersiveweb.dev/';
+                        message.innerHTML = 'WEBXR NOT AVAILABLE';
+                    }
+                    return message; // Return message element if no XR
+                }
+                return button;
+            }
+        };
+    </script>
+    <script>
+        // --- On-screen console ---
+        function setupOnScreenConsole() {
+            const container = document.getElementById('console-container');
+            if (!container) return;
+            const log = (message, color) => {
+                const p = document.createElement('p');
+                p.style.margin = '2px';
+                p.style.wordBreak = 'break-all';
+                p.style.color = color || '#0f0';
+                try { p.textContent = '> ' + JSON.stringify(message); } catch (e) { p.textContent = '> [Unserializable object]'; }
+                container.appendChild(p);
+                container.scrollTop = container.scrollHeight;
+            };
+            const original = { log: console.log, warn: console.warn, error: console.error };
+            window.onerror = (msg, url, line) => { log(`ERROR: ${msg} at line ${line}`, '#f00'); };
+            console.log = (...args) => { log(args.length === 1 ? args[0] : args); original.log.apply(console, args); };
+            console.warn = (...args) => { log(args.length === 1 ? args[0] : args, '#ff0'); original.warn.apply(console, args); };
+            console.error = (...args) => { log(args.length === 1 ? args[0] : args, '#f00'); original.error.apply(console, args); };
+            console.log('On-screen console initialized.');
+        }
+        setupOnScreenConsole();
+
+        document.getElementById('toggle-console').addEventListener('click', () => {
+            const consoleContainer = document.getElementById('console-container');
+            consoleContainer.style.display = consoleContainer.style.display === 'none' ? 'block' : 'none';
+        });
+
+        // --- Game Code ---
+        let camera, scene, renderer, maze, clock;
+        const controls = { forward: false, backward: false, left: false, right: false };
+        const moveSpeed = 5;
+
+        function init() {
+            try {
+                clock = new THREE.Clock();
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x000000);
+
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.xr.enabled = true;
+                document.body.appendChild(renderer.domElement);
+
+                document.body.appendChild(VRButton.createButton(renderer));
+
+                const mazeWidth = 15, mazeHeight = 15, wallSize = 4;
+                maze = generateMaze(mazeWidth, mazeHeight);
+                const mazeMesh = createMazeMesh(maze, wallSize);
+                scene.add(mazeMesh);
+
+                // Start the player in the center of the first empty cell
+                const startX = 1.5 * wallSize;
+                const startZ = 1.5 * wallSize;
+                camera.position.set(startX, 1.6, startZ);
+
+                addNonVRControls();
+                addMovementListeners();
+                setupJoystick();
+                window.addEventListener('resize', onWindowResize, false);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function generateMaze(width, height) {
+            const maze = Array(height).fill(0).map(() => Array(width).fill(1));
+            const stack = [[1, 1]];
+            maze[1][1] = 0;
+            while (stack.length > 0) {
+                const [cx, cy] = stack[stack.length - 1];
+                const neighbors = [];
+                if (cx > 1 && maze[cy][cx - 2] === 1) neighbors.push([cx - 2, cy, cx - 1, cy]);
+                if (cx < width - 2 && maze[cy][cx + 2] === 1) neighbors.push([cx + 2, cy, cx + 1, cy]);
+                if (cy > 1 && maze[cy - 2][cx] === 1) neighbors.push([cx, cy - 2, cx, cy - 1]);
+                if (cy < height - 2 && maze[cy + 2][cx] === 1) neighbors.push([cx, cy + 2, cx, cy + 1]);
+                if (neighbors.length > 0) {
+                    const [nx, ny, wx, wy] = neighbors[Math.floor(Math.random() * neighbors.length)];
+                    maze[ny][nx] = 0;
+                    maze[wy][wx] = 0;
+                    stack.push([nx, ny]);
+                } else {
+                    stack.pop();
+                }
+            }
+            return maze;
+        }
+
+        function createMazeMesh(maze, wallSize) {
+            const lines = [];
+            const wallHeight = 3;
+            const width = maze[0].length;
+            const height = maze.length;
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    if (maze[y][x] === 1) { // It's a wall
+                        const wallX = x * wallSize;
+                        const wallZ = y * wallSize;
+                        const half = wallSize / 2;
+
+                        // 8 corners of the cube
+                        const v = [
+                            new THREE.Vector3(wallX, 0, wallZ), // 0: bottom-left-front
+                            new THREE.Vector3(wallX + wallSize, 0, wallZ), // 1: bottom-right-front
+                            new THREE.Vector3(wallX + wallSize, 0, wallZ + wallSize), // 2: bottom-right-back
+                            new THREE.Vector3(wallX, 0, wallZ + wallSize), // 3: bottom-left-back
+                            new THREE.Vector3(wallX, wallHeight, wallZ), // 4: top-left-front
+                            new THREE.Vector3(wallX + wallSize, wallHeight, wallZ), // 5: top-right-front
+                            new THREE.Vector3(wallX + wallSize, wallHeight, wallZ + wallSize), // 6: top-right-back
+                            new THREE.Vector3(wallX, wallHeight, wallZ + wallSize)  // 7: top-left-back
+                        ];
+
+                        // 12 edges
+                        lines.push(v[0], v[1], v[1], v[2], v[2], v[3], v[3], v[0]); // bottom
+                        lines.push(v[4], v[5], v[5], v[6], v[6], v[7], v[7], v[4]); // top
+                        lines.push(v[0], v[4], v[1], v[5], v[2], v[6], v[3], v[7]); // sides
+                    }
+                }
+            }
+            const geometry = new THREE.BufferGeometry().setFromPoints(lines);
+            const material = new THREE.LineBasicMaterial({ color: 0xffffff });
+            return new THREE.LineSegments(geometry, material);
+        }
+
+        function setupJoystick() {
+            // const isMobile = /Mobi/i.test(window.navigator.userAgent);
+            // if (!isMobile) return;
+            console.log("Setting up joystick...");
+
+            const base = document.getElementById('joystick-base');
+            const handle = document.getElementById('joystick-handle');
+            base.style.display = 'block';
+
+            // Use a timeout to ensure dimensions are available
+            setTimeout(() => {
+                const handleRadius = handle.offsetWidth / 2;
+                const baseRadius = base.offsetWidth / 2;
+                console.log(`Joystick dimensions: base=${baseRadius*2}, handle=${handleRadius*2}`);
+                if (baseRadius === 0) {
+                    console.error("Joystick size is 0. It might be hidden or not rendered yet.");
+                    return;
+                }
+                
+                let touchId = null;
+                let center = { x: 0, y: 0 };
+
+                base.addEventListener('touchstart', e => {
+                    e.preventDefault();
+                    if (touchId === null) {
+                        const touch = e.changedTouches[0];
+                        touchId = touch.identifier;
+                        const baseRect = base.getBoundingClientRect();
+                        center = { x: baseRect.left + baseRadius, y: baseRect.top + baseRadius };
+                    }
+                }, { passive: false });
+
+                document.addEventListener('touchmove', e => {
+                    if (touchId === null) return;
+                    let touch;
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        if (e.changedTouches[i].identifier === touchId) {
+                            touch = e.changedTouches[i];
+                            break;
+                        }
+                    }
+                    if (!touch) return;
+
+                    const vec = { x: touch.clientX - center.x, y: touch.clientY - center.y };
+                    const distance = Math.min(Math.sqrt(vec.x * vec.x + vec.y * vec.y), baseRadius);
+                    const angle = Math.atan2(vec.y, vec.x);
+
+                    handle.style.left = `${baseRadius - handleRadius + Math.cos(angle) * distance}px`;
+                    handle.style.top = `${baseRadius - handleRadius + Math.sin(angle) * distance}px`;
+
+                    const deadzone = 0.2;
+                    const normX = Math.cos(angle) * (distance / baseRadius);
+                    const normY = Math.sin(angle) * (distance / baseRadius);
+
+                    controls.forward = normY < -deadzone;
+                    controls.backward = normY > deadzone;
+                    controls.left = normX < -deadzone;
+                    controls.right = normX > deadzone;
+
+                }, { passive: false });
+
+                window.addEventListener('touchend', e => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        if (e.changedTouches[i].identifier === touchId) {
+                            handle.style.left = `${baseRadius - handleRadius}px`;
+                            handle.style.top = `${baseRadius - handleRadius}px`;
+                            controls.forward = false;
+                            controls.backward = false;
+                            controls.left = false;
+                            controls.right = false;
+                            touchId = null;
+                            break;
+                        }
+                    }
+                });
+            }, 100); // 100ms delay to wait for rendering
+        }
+
+        function addMovementListeners() {
+            window.addEventListener('keydown', (e) => {
+                switch(e.code) {
+                    case 'KeyW': case 'KeyZ': controls.forward = true; break;
+                    case 'KeyS': controls.backward = true; break;
+                    case 'KeyA': case 'KeyQ': controls.left = true; break;
+                    case 'KeyD': controls.right = true; break;
+                }
+            });
+            window.addEventListener('keyup', (e) => {
+                switch(e.code) {
+                    case 'KeyW': case 'KeyZ': controls.forward = false; break;
+                    case 'KeyS': controls.backward = false; break;
+                    case 'KeyA': case 'KeyQ': controls.left = false; break;
+                    case 'KeyD': controls.right = false; break;
+                }
+            });
+        }
+
+        function handleMovement(deltaTime) {
+            const velocity = new THREE.Vector3();
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+            direction.y = 0;
+            direction.normalize();
+
+            const leftVector = new THREE.Vector3().crossVectors(camera.up, direction);
+
+            if (controls.forward) velocity.add(direction);
+            if (controls.backward) velocity.sub(direction);
+            if (controls.left) velocity.add(leftVector);
+            if (controls.right) velocity.sub(leftVector);
+
+            velocity.normalize().multiplyScalar(moveSpeed * deltaTime);
+
+            // Check each axis separately
+            const newPosX = camera.position.clone().add(new THREE.Vector3(velocity.x, 0, 0));
+            if (isPositionValid(newPosX)) {
+                camera.position.x = newPosX.x;
+            }
+
+            const newPosZ = camera.position.clone().add(new THREE.Vector3(0, 0, velocity.z));
+            if (isPositionValid(newPosZ)) {
+                camera.position.z = newPosZ.z;
+            }
+        }
+
+        function isPositionValid(posToValidate) {
+            const wallSize = 4;
+            const gridX = Math.floor(posToValidate.x / wallSize);
+            const gridZ = Math.floor(posToValidate.z / wallSize);
+
+            if (gridX < 0 || gridX >= 15 || gridZ < 0 || gridZ >= 15 || (maze[gridZ] && maze[gridZ][gridX] === 1)) {
+                // console.error(`Collision! Pos: (${posToValidate.x.toFixed(2)}, ${posToValidate.z.toFixed(2)}), Grid: (${gridX}, ${gridZ})`);
+                return false;
+            }
+            return true;
+        }
+
+        function addNonVRControls() {
+            let isDragging = false;
+            let prev = { x: 0, y: 0 };
+            const start = (x, y) => { isDragging = true; prev = { x, y }; };
+            const drag = (x, y) => {
+                if (!isDragging || renderer.xr.isPresenting) return;
+                const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+                euler.setFromQuaternion(camera.quaternion);
+                euler.y -= (x - prev.x) * 0.005;
+                euler.x -= (y - prev.y) * 0.005;
+                euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
+                camera.quaternion.setFromEuler(euler);
+                prev = { x, y };
+            };
+            const stop = () => { isDragging = false; };
+            renderer.domElement.addEventListener('mousedown', e => start(e.clientX, e.clientY));
+            renderer.domElement.addEventListener('mousemove', e => drag(e.clientX, e.clientY));
+            renderer.domElement.addEventListener('mouseup', stop);
+            renderer.domElement.addEventListener('touchstart', e => start(e.touches[0].pageX, e.touches[0].pageY));
+            renderer.domElement.addEventListener('touchmove', e => drag(e.touches[0].pageX, e.touches[0].pageY));
+            renderer.domElement.addEventListener('touchend', stop);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            renderer.setAnimationLoop(() => {
+                const deltaTime = clock.getDelta();
+                handleMovement(deltaTime);
+                renderer.render(scene, camera);
+            });
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>

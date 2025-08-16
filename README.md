@@ -1,0 +1,29 @@
+# Black Cat Alley (Titre Provisoire)
+
+## Concept du Jeu
+
+Un jeu d'horreur/puzzle en WebXR pour le concours js13k sur le thème "chat noir".
+
+## Objectif
+
+Le joueur doit s'échapper d'un labyrinthe de ruelles sombres et inquiétantes tout en évitant des chats de gouttière hostiles.
+
+## Style Visuel
+
+*   **Palette de couleurs :** Strictement noir et blanc.
+*   **Environnement :** Le monde du jeu est rendu en silhouettes de lignes blanches sur un fond entièrement noir, créant une atmosphère de ruelles urbaines angoissantes.
+*   **Les Chats :** Les chats sont également représentés par des silhouettes en lignes blanches. Leurs yeux sont deux points blancs scintillants, les rendant visibles dans l'obscurité.
+
+## Mécaniques de Jeu
+
+*   **Navigation :** Le joueur se déplace dans le labyrinthe pour trouver la sortie.
+*   **Lampe de Poche :**
+    *   Le joueur dispose d'une lampe de poche pour se défendre.
+    *   Lorsqu'elle est allumée, elle projette un large cône de lumière blanche.
+    *   La lumière de la lampe de poche fait fuir les chats.
+*   **Gestion des Ressources :** La batterie de la lampe de poche est limitée, obligeant le joueur à l'utiliser avec parcimonie.
+
+## Conditions
+
+*   **Victoire :** Trouver la sortie du labyrinthe.
+*   **Défaite :** Se faire attraper par un chat.
