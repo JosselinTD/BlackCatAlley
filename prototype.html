@@ -124,10 +124,19 @@
             consoleContainer.style.display = consoleContainer.style.display === 'none' ? 'block' : 'none';
         });
 
-        // --- Game Code ---
+        // --- Game Constants ---
+        const moveSpeed = 5;
+        const mazeWidth = 15, mazeHeight = 15, wallSize = 8; // Wallsize is now 8
+        const minBuildingHeight = 3, maxBuildingHeight = 12;
+        const catSpawnInterval = 5; // seconds
+        const catSpeed = 2;
+
+        // --- Game State ---
         let camera, scene, renderer, maze, clock;
         const controls = { forward: false, backward: false, left: false, right: false };
-        const moveSpeed = 5;
+        const lookInput = { dx: 0, dy: 0 };
+        const cats = [];
+        let spawnTimer = 0;
 
         function init() {
             try {
@@ -144,9 +153,8 @@
 
                 document.body.appendChild(VRButton.createButton(renderer));
 
-                const mazeWidth = 15, mazeHeight = 15, wallSize = 4;
                 maze = generateMaze(mazeWidth, mazeHeight);
-                const mazeMesh = createMazeMesh(maze, wallSize);
+                const mazeMesh = createMazeMesh(maze);
                 scene.add(mazeMesh);
 
                 // Start the player in the center of the first empty cell
@@ -186,9 +194,8 @@
             return maze;
         }
 
-        function createMazeMesh(maze, wallSize) {
+        function createMazeMesh(maze) {
             const lines = [];
-            const wallHeight = 3;
             const width = maze[0].length;
             const height = maze.length;
             for (let y = 0; y < height; y++) {
@@ -196,18 +203,19 @@
                     if (maze[y][x] === 1) { // It's a wall
                         const wallX = x * wallSize;
                         const wallZ = y * wallSize;
-                        const half = wallSize / 2;
+                        
+                        const buildingHeight = Math.random() * (maxBuildingHeight - minBuildingHeight) + minBuildingHeight;
 
                         // 8 corners of the cube
                         const v = [
-                            new THREE.Vector3(wallX, 0, wallZ), // 0: bottom-left-front
-                            new THREE.Vector3(wallX + wallSize, 0, wallZ), // 1: bottom-right-front
-                            new THREE.Vector3(wallX + wallSize, 0, wallZ + wallSize), // 2: bottom-right-back
-                            new THREE.Vector3(wallX, 0, wallZ + wallSize), // 3: bottom-left-back
-                            new THREE.Vector3(wallX, wallHeight, wallZ), // 4: top-left-front
-                            new THREE.Vector3(wallX + wallSize, wallHeight, wallZ), // 5: top-right-front
-                            new THREE.Vector3(wallX + wallSize, wallHeight, wallZ + wallSize), // 6: top-right-back
-                            new THREE.Vector3(wallX, wallHeight, wallZ + wallSize)  // 7: top-left-back
+                            new THREE.Vector3(wallX, 0, wallZ),
+                            new THREE.Vector3(wallX + wallSize, 0, wallZ),
+                            new THREE.Vector3(wallX + wallSize, 0, wallZ + wallSize),
+                            new THREE.Vector3(wallX, 0, wallZ + wallSize),
+                            new THREE.Vector3(wallX, buildingHeight, wallZ),
+                            new THREE.Vector3(wallX + wallSize, buildingHeight, wallZ),
+                            new THREE.Vector3(wallX + wallSize, buildingHeight, wallZ + wallSize),
+                            new THREE.Vector3(wallX, buildingHeight, wallZ + wallSize)
                         ];
 
                         // 12 edges
@@ -348,11 +356,10 @@
         }
 
         function isPositionValid(posToValidate) {
-            const wallSize = 4;
             const gridX = Math.floor(posToValidate.x / wallSize);
             const gridZ = Math.floor(posToValidate.z / wallSize);
 
-            if (gridX < 0 || gridX >= 15 || gridZ < 0 || gridZ >= 15 || (maze[gridZ] && maze[gridZ][gridX] === 1)) {
+            if (gridX < 0 || gridX >= mazeWidth || gridZ < 0 || gridZ >= mazeHeight || (maze[gridZ] && maze[gridZ][gridX] === 1)) {
                 // console.error(`Collision! Pos: (${posToValidate.x.toFixed(2)}, ${posToValidate.z.toFixed(2)}), Grid: (${gridX}, ${gridZ})`);
                 return false;
             }
@@ -365,12 +372,8 @@
             const start = (x, y) => { isDragging = true; prev = { x, y }; };
             const drag = (x, y) => {
                 if (!isDragging || renderer.xr.isPresenting) return;
-                const euler = new THREE.Euler(0, 0, 0, 'YXZ');
-                euler.setFromQuaternion(camera.quaternion);
-                euler.y -= (x - prev.x) * 0.005;
-                euler.x -= (y - prev.y) * 0.005;
-                euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
-                camera.quaternion.setFromEuler(euler);
+                lookInput.dx += x - prev.x;
+                lookInput.dy += y - prev.y;
                 prev = { x, y };
             };
             const stop = () => { isDragging = false; };
@@ -382,16 +385,92 @@
             renderer.domElement.addEventListener('touchend', stop);
         }
 
+        function handleRotation() {
+            if (lookInput.dx === 0 && lookInput.dy === 0) return;
+
+            const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+            euler.setFromQuaternion(camera.quaternion);
+
+            euler.y -= lookInput.dx * 0.005;
+            euler.x -= lookInput.dy * 0.005;
+            euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
+            
+            camera.quaternion.setFromEuler(euler);
+
+            lookInput.dx = 0;
+            lookInput.dy = 0;
+        }
+
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
+        function spawnCat() {
+            const catGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            const catMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const catMesh = new THREE.Mesh(catGeometry, catMaterial);
+
+            // Find a valid spawn position
+            let spawnPos = null;
+            while (spawnPos === null) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 10 + Math.random() * 10;
+                const pos = new THREE.Vector3(
+                    camera.position.x + Math.cos(angle) * distance,
+                    0.25, // half of cat height
+                    camera.position.z + Math.sin(angle) * distance
+                );
+                if (isPositionValid(pos)) {
+                    spawnPos = pos;
+                }
+            }
+
+            catMesh.position.copy(spawnPos);
+            scene.add(catMesh);
+            cats.push({ mesh: catMesh });
+        }
+
+        function updateCats(deltaTime) {
+            for (const cat of cats) {
+                const direction = new THREE.Vector3().subVectors(camera.position, cat.mesh.position);
+                direction.y = 0; // Keep the cat on the ground plane
+                direction.normalize();
+
+                const velocity = direction.multiplyScalar(catSpeed * deltaTime);
+
+                // Use the same sliding collision logic as the player
+                const newPos = cat.mesh.position.clone();
+
+                const moveX = new THREE.Vector3(velocity.x, 0, 0);
+                if (isPositionValid(newPos.clone().add(moveX))) {
+                    newPos.add(moveX);
+                }
+
+                const moveZ = new THREE.Vector3(0, 0, velocity.z);
+                if (isPositionValid(newPos.clone().add(moveZ))) {
+                    newPos.add(moveZ);
+                }
+
+                cat.mesh.position.copy(newPos);
+            }
+        }
+
         function animate() {
             renderer.setAnimationLoop(() => {
                 const deltaTime = clock.getDelta();
+                spawnTimer += deltaTime;
+
+                handleRotation();
                 handleMovement(deltaTime);
+                updateCats(deltaTime);
+
+                if (spawnTimer > catSpawnInterval) {
+                    spawnCat();
+                    spawnTimer = 0;
+                }
+
                 renderer.render(scene, camera);
             });
         }
