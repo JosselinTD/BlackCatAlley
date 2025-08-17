@@ -10,20 +10,21 @@
         #info { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; }
         a { color: #fff; }
         #console-container { position: fixed; bottom: 0; left: 0; right: 0; height: 150px; background-color: rgba(0,0,0,0.7); color: #0f0; font-family: monospace; overflow-y: scroll; padding: 5px; z-index: 9999; border-top: 1px solid #333; }
-        #joystick-base { position: absolute; bottom: 20px; left: 20px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border-radius: 50%; display: none; }
-        #joystick-handle { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; }
+        #joystick-move-base { position: absolute; bottom: 20px; left: 20px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border-radius: 50%; display: none; }
+        #joystick-move-handle { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; }
+        #joystick-look-base { position: absolute; bottom: 20px; right: 20px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border-radius: 50%; display: none; }
+        #joystick-look-handle { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; }
     </style>
 </head>
 <body>
     <div id="info">
         Black Cat Alley - Prototype<br/>
-        (Cliquez et glissez pour regarder)
+        (Utilisez le joystick droit pour regarder)
     </div>
     <button id="toggle-console" style="position: fixed; top: 10px; right: 10px; z-index: 10001; background: #333; color: #fff; border: 1px solid #fff; padding: 5px;">Toggle Console</button>
     <div id="console-container"></div>
-    <div id="joystick-base"><div id="joystick-handle"></div></div>
-
-    <div id="joystick-base"><div id="joystick-handle"></div></div>
+    <div id="joystick-move-base"><div id="joystick-move-handle"></div></div>
+    <div id="joystick-look-base"><div id="joystick-look-handle"></div></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
@@ -126,6 +127,7 @@
 
         // --- Game Constants ---
         const moveSpeed = 5;
+        const lookSpeed = 2;
         const mazeWidth = 15, mazeHeight = 15, wallSize = 8; // Wallsize is now 8
         const minBuildingHeight = 3, maxBuildingHeight = 12;
         const catSpawnInterval = 5; // seconds
@@ -134,7 +136,7 @@
         // --- Game State ---
         let camera, scene, renderer, maze, clock;
         const controls = { forward: false, backward: false, left: false, right: false };
-        const lookInput = { dx: 0, dy: 0 };
+        const lookInput = { x: 0, y: 0 };
         const cats = [];
         let spawnTimer = 0;
 
@@ -162,9 +164,9 @@
                 const startZ = 1.5 * wallSize;
                 camera.position.set(startX, 1.6, startZ);
 
-                addNonVRControls();
                 addMovementListeners();
-                setupJoystick();
+                setupMoveJoystick();
+                setupLookJoystick();
                 window.addEventListener('resize', onWindowResize, false);
             } catch (e) {
                 console.error(e);
@@ -230,20 +232,16 @@
             return new THREE.LineSegments(geometry, material);
         }
 
-        function setupJoystick() {
-            // const isMobile = /Mobi/i.test(window.navigator.userAgent);
-            // if (!isMobile) return;
-            console.log("Setting up joystick...");
+        function setupMoveJoystick() {
+            console.log("Setting up move joystick...");
 
-            const base = document.getElementById('joystick-base');
-            const handle = document.getElementById('joystick-handle');
+            const base = document.getElementById('joystick-move-base');
+            const handle = document.getElementById('joystick-move-handle');
             base.style.display = 'block';
 
-            // Use a timeout to ensure dimensions are available
             setTimeout(() => {
                 const handleRadius = handle.offsetWidth / 2;
                 const baseRadius = base.offsetWidth / 2;
-                console.log(`Joystick dimensions: base=${baseRadius*2}, handle=${handleRadius*2}`);
                 if (baseRadius === 0) {
                     console.error("Joystick size is 0. It might be hidden or not rendered yet.");
                     return;
@@ -305,7 +303,82 @@
                         }
                     }
                 });
-            }, 100); // 100ms delay to wait for rendering
+            }, 100);
+        }
+
+        function setupLookJoystick() {
+            console.log("Setting up look joystick...");
+
+            const base = document.getElementById('joystick-look-base');
+            const handle = document.getElementById('joystick-look-handle');
+            base.style.display = 'block';
+
+            setTimeout(() => {
+                const handleRadius = handle.offsetWidth / 2;
+                const baseRadius = base.offsetWidth / 2;
+                if (baseRadius === 0) {
+                    console.error("Look Joystick size is 0. It might be hidden or not rendered yet.");
+                    return;
+                }
+                
+                let touchId = null;
+                let center = { x: 0, y: 0 };
+
+                base.addEventListener('touchstart', e => {
+                    e.preventDefault();
+                    if (touchId === null) {
+                        const touch = e.changedTouches[0];
+                        touchId = touch.identifier;
+                        const baseRect = base.getBoundingClientRect();
+                        center = { x: baseRect.left + baseRadius, y: baseRect.top + baseRadius };
+                    }
+                }, { passive: false });
+
+                document.addEventListener('touchmove', e => {
+                    if (touchId === null) return;
+                    let touch;
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        if (e.changedTouches[i].identifier === touchId) {
+                            touch = e.changedTouches[i];
+                            break;
+                        }
+                    }
+                    if (!touch) return;
+
+                    const vec = { x: touch.clientX - center.x, y: touch.clientY - center.y };
+                    const distance = Math.min(Math.sqrt(vec.x * vec.x + vec.y * vec.y), baseRadius);
+                    const angle = Math.atan2(vec.y, vec.x);
+
+                    handle.style.left = `${baseRadius - handleRadius + Math.cos(angle) * distance}px`;
+                    handle.style.top = `${baseRadius - handleRadius + Math.sin(angle) * distance}px`;
+
+                    const deadzone = 0.2;
+                    const normX = Math.cos(angle) * (distance / baseRadius);
+                    const normY = Math.sin(angle) * (distance / baseRadius);
+
+                    if ((distance / baseRadius) < deadzone) {
+                        lookInput.x = 0;
+                        lookInput.y = 0;
+                    } else {
+                        lookInput.x = normX;
+                        lookInput.y = normY;
+                    }
+
+                }, { passive: false });
+
+                window.addEventListener('touchend', e => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        if (e.changedTouches[i].identifier === touchId) {
+                            handle.style.left = `${baseRadius - handleRadius}px`;
+                            handle.style.top = `${baseRadius - handleRadius}px`;
+                            lookInput.x = 0;
+                            lookInput.y = 0;
+                            touchId = null;
+                            break;
+                        }
+                    }
+                });
+            }, 100);
         }
 
         function addMovementListeners() {
@@ -366,39 +439,17 @@
             return true;
         }
 
-        function addNonVRControls() {
-            let isDragging = false;
-            let prev = { x: 0, y: 0 };
-            const start = (x, y) => { isDragging = true; prev = { x, y }; };
-            const drag = (x, y) => {
-                if (!isDragging || renderer.xr.isPresenting) return;
-                lookInput.dx += x - prev.x;
-                lookInput.dy += y - prev.y;
-                prev = { x, y };
-            };
-            const stop = () => { isDragging = false; };
-            renderer.domElement.addEventListener('mousedown', e => start(e.clientX, e.clientY));
-            renderer.domElement.addEventListener('mousemove', e => drag(e.clientX, e.clientY));
-            renderer.domElement.addEventListener('mouseup', stop);
-            renderer.domElement.addEventListener('touchstart', e => start(e.touches[0].pageX, e.touches[0].pageY));
-            renderer.domElement.addEventListener('touchmove', e => drag(e.touches[0].pageX, e.touches[0].pageY));
-            renderer.domElement.addEventListener('touchend', stop);
-        }
-
-        function handleRotation() {
-            if (lookInput.dx === 0 && lookInput.dy === 0) return;
+        function handleRotation(deltaTime) {
+            if (lookInput.x === 0 && lookInput.y === 0) return;
 
             const euler = new THREE.Euler(0, 0, 0, 'YXZ');
             euler.setFromQuaternion(camera.quaternion);
 
-            euler.y -= lookInput.dx * 0.005;
-            euler.x -= lookInput.dy * 0.005;
+            euler.y -= lookInput.x * lookSpeed * deltaTime;
+            euler.x -= lookInput.y * lookSpeed * deltaTime;
             euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
             
             camera.quaternion.setFromEuler(euler);
-
-            lookInput.dx = 0;
-            lookInput.dy = 0;
         }
 
         function onWindowResize() {
@@ -462,7 +513,7 @@
                 const deltaTime = clock.getDelta();
                 spawnTimer += deltaTime;
 
-                handleRotation();
+                handleRotation(deltaTime);
                 handleMovement(deltaTime);
                 updateCats(deltaTime);
 
