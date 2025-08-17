@@ -22,6 +22,7 @@
         (Utilisez le joystick droit pour regarder)
     </div>
     <button id="toggle-console" style="position: fixed; top: 10px; right: 10px; z-index: 10001; background: #333; color: #fff; border: 1px solid #fff; padding: 5px;">Toggle Console</button>
+    <button id="flashlight-button" style="position: fixed; bottom: 130px; left: 50%; transform: translateX(-50%); z-index: 10001; background: #555; color: #fff; border: 1px solid #fff; padding: 10px 15px; border-radius: 5px; font-family: monospace;">Flashlight</button>
     <div id="console-container"></div>
     <div id="joystick-move-base"><div id="joystick-move-handle"></div></div>
     <div id="joystick-look-base"><div id="joystick-look-handle"></div></div>
@@ -134,7 +135,7 @@
         const catSpeed = 2;
 
         // --- Game State ---
-        let camera, scene, renderer, maze, clock, eyeTexture;
+        let camera, scene, renderer, maze, clock, eyeTexture, spotLight;
         const controls = { forward: false, backward: false, left: false, right: false };
         const lookInput = { x: 0, y: 0 };
         const cats = [];
@@ -181,6 +182,40 @@
                 setupMoveJoystick();
                 setupLookJoystick();
                 window.addEventListener('resize', onWindowResize, false);
+
+                // --- Ground Plane ---
+                const groundGeometry = new THREE.PlaneGeometry(mazeWidth * wallSize, mazeHeight * wallSize);
+                const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a }); // Even darker grey for ground
+                const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
+                groundMesh.rotation.x = -Math.PI / 2; // Lay it flat
+                groundMesh.position.set((mazeWidth * wallSize) / 2, 0, (mazeHeight * wallSize) / 2);
+                scene.add(groundMesh);
+
+                // --- Flashlight Setup ---
+                spotLight = new THREE.SpotLight(0xffffff, 100);
+                spotLight.angle = Math.PI / 16; // ~11 degrees, narrower beam
+                spotLight.penumbra = 0; // Hardest edge
+                                spotLight.decay = 0; // No falloff for arcade style
+                spotLight.distance = 40;
+
+                // Attach light to camera
+                camera.add(spotLight);
+                camera.add(spotLight.target);
+
+                // Position the light source below the camera (chest level)
+                spotLight.position.set(0, -0.6, 0);
+                
+                // Position the target in front of the light source
+                spotLight.target.position.set(0, -0.6, -1);
+
+                spotLight.visible = false;
+                if (camera.parent === null) scene.add(camera);
+
+                let flashlightOn = false;
+                document.getElementById('flashlight-button').addEventListener('click', () => {
+                    flashlightOn = !flashlightOn;
+                    spotLight.visible = flashlightOn;
+                });
             } catch (e) {
                 console.error(e);
             }
@@ -214,7 +249,7 @@
             const width = maze[0].length;
             const height = maze.length;
 
-            const wallMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 }); // Black buildings
+                        const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 }); // Dark grey so it can be lit, standard for better quality
             const outlineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff }); // White outlines
 
             for (let y = 0; y < height; y++) {
@@ -251,6 +286,27 @@
                         const buildingGroup = new THREE.Group();
                         buildingGroup.add(wallMesh);
                         buildingGroup.add(topOutline);
+
+                        // Create the BLACK outline for the bottom to separate from the ground
+                        const bottomOutlineGeometry = new THREE.BufferGeometry();
+                        const y_offset = 0.01; // Tiny offset to prevent z-fighting with the ground
+                        const bottomVertices = new Float32Array([
+                            0, y_offset, 0,
+                            wallSize, y_offset, 0,
+
+                            wallSize, y_offset, 0,
+                            wallSize, y_offset, wallSize,
+
+                            wallSize, y_offset, wallSize,
+                            0, y_offset, wallSize,
+
+                            0, y_offset, wallSize,
+                            0, y_offset, 0
+                        ]);
+                        bottomOutlineGeometry.setAttribute('position', new THREE.BufferAttribute(bottomVertices, 3));
+                        const bottomOutlineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
+                        const bottomOutline = new THREE.LineSegments(bottomOutlineGeometry, bottomOutlineMaterial);
+                        buildingGroup.add(bottomOutline);
 
                         // Add white details (windows) with overlap prevention
                         const detailMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -674,6 +730,8 @@
                 handleRotation(deltaTime);
                 handleMovement(deltaTime);
                 updateCats(deltaTime);
+
+                
 
                 if (spawnTimer > catSpawnInterval) {
                     spawnCat();
