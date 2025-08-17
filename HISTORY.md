@@ -29,3 +29,16 @@ L'utilisateur a proposé de créer un jeu WebXR pour le concours js13k sur le th
 ### 5. État Actuel
 
 Le prototype est maintenant fonctionnel avec un labyrinthe explorable via clavier et joystick, une détection de collision robuste, et une entrée en mode VR fonctionnelle.
+
+### 6. Amélioration du Style Visuel
+
+- **Mise à jour des règles :** Ajout des règles du concours WebXR au fichier `README.md`.
+- **Style des bâtiments :**
+    - Remplacement des murs en "fil de fer" par des blocs noirs solides avec des arêtes supérieures blanches pour un meilleur effet de silhouette.
+    - Ajout de fenêtres blanches (détails négatifs) générées aléatoirement sur les façades pour augmenter le niveau de détail.
+    - Implémentation d'une logique pour éviter la superposition des fenêtres.
+- **Style des chats :**
+    - Remplacement du cube représentant le chat par une paire d'yeux flottants pour un effet plus inquiétant.
+    - Ajout d'un corps invisible pour gérer les collisions entre les chats et les empêcher de se superposer.
+    - Implémentation d'un système de "Sprites" pour les yeux afin de garantir qu'ils soient toujours visibles et correctement orientés vers le joueur, corrigeant plusieurs bugs visuels.
+    - Après expérimentation avec plusieurs formes, la forme des yeux a été standardisée en deux cercles lumineux pour tous les chats pour plus de cohérence.

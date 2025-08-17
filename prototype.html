@@ -134,15 +134,28 @@
         const catSpeed = 2;
 
         // --- Game State ---
-        let camera, scene, renderer, maze, clock;
+        let camera, scene, renderer, maze, clock, eyeTexture;
         const controls = { forward: false, backward: false, left: false, right: false };
         const lookInput = { x: 0, y: 0 };
         const cats = [];
         let spawnTimer = 0;
 
+        function createEyeTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const context = canvas.getContext('2d');
+            context.beginPath();
+            context.arc(32, 32, 30, 0, 2 * Math.PI);
+            context.fillStyle = '#FFFFFF';
+            context.fill();
+            return new THREE.CanvasTexture(canvas);
+        }
+
         function init() {
             try {
                 clock = new THREE.Clock();
+                eyeTexture = createEyeTexture();
                 scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x000000);
 
@@ -197,39 +210,122 @@
         }
 
         function createMazeMesh(maze) {
-            const lines = [];
+            const buildings = new THREE.Group();
             const width = maze[0].length;
             const height = maze.length;
+
+            const wallMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 }); // Black buildings
+            const outlineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff }); // White outlines
+
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width; x++) {
-                    if (maze[y][x] === 1) { // It's a wall
+                    if (maze[y][x] === 1) { // It's a wall block
                         const wallX = x * wallSize;
                         const wallZ = y * wallSize;
-                        
-                        const buildingHeight = Math.random() * (maxBuildingHeight - minBuildingHeight) + minBuildingHeight;
+                        const buildingHeight = minBuildingHeight + Math.random() * (maxBuildingHeight - minBuildingHeight);
 
-                        // 8 corners of the cube
-                        const v = [
-                            new THREE.Vector3(wallX, 0, wallZ),
-                            new THREE.Vector3(wallX + wallSize, 0, wallZ),
-                            new THREE.Vector3(wallX + wallSize, 0, wallZ + wallSize),
-                            new THREE.Vector3(wallX, 0, wallZ + wallSize),
-                            new THREE.Vector3(wallX, buildingHeight, wallZ),
-                            new THREE.Vector3(wallX + wallSize, buildingHeight, wallZ),
-                            new THREE.Vector3(wallX + wallSize, buildingHeight, wallZ + wallSize),
-                            new THREE.Vector3(wallX, buildingHeight, wallZ + wallSize)
-                        ];
+                        // Create the solid black building
+                        const wallGeometry = new THREE.BoxGeometry(wallSize, buildingHeight, wallSize);
+                        const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
+                        wallMesh.position.set(wallSize / 2, buildingHeight / 2, wallSize / 2);
 
-                        // 12 edges
-                        lines.push(v[0], v[1], v[1], v[2], v[2], v[3], v[3], v[0]); // bottom
-                        lines.push(v[4], v[5], v[5], v[6], v[6], v[7], v[7], v[4]); // top
-                        lines.push(v[0], v[4], v[1], v[5], v[2], v[6], v[3], v[7]); // sides
+                        // Create the white outline for the top
+                        const topOutlineGeometry = new THREE.BufferGeometry();
+                        const topVertices = new Float32Array([
+                            0, buildingHeight, 0,
+                            wallSize, buildingHeight, 0,
+
+                            wallSize, buildingHeight, 0,
+                            wallSize, buildingHeight, wallSize,
+
+                            wallSize, buildingHeight, wallSize,
+                            0, buildingHeight, wallSize,
+
+                            0, buildingHeight, wallSize,
+                            0, buildingHeight, 0
+                        ]);
+                        topOutlineGeometry.setAttribute('position', new THREE.BufferAttribute(topVertices, 3));
+                        const topOutline = new THREE.LineSegments(topOutlineGeometry, outlineMaterial);
+
+                        // Group building and outline together
+                        const buildingGroup = new THREE.Group();
+                        buildingGroup.add(wallMesh);
+                        buildingGroup.add(topOutline);
+
+                        // Add white details (windows) with overlap prevention
+                        const detailMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                        const windowProbability = 0.8;
+                        const minWindowMargin = 0.4;
+
+                        if (Math.random() < windowProbability) {
+                            const windowRectsByFace = { 0: [], 1: [], 2: [], 3: [] };
+                            const numWindows = Math.floor(Math.random() * 8) + 4;
+                            let attempts = 0;
+
+                            for (let i = 0; i < numWindows && attempts < 100; attempts++) {
+                                const windowWidth = 0.5 + Math.random() * 1.5;
+                                const windowHeight = 0.5 + Math.random() * 2.5;
+                                
+                                const faceIndex = Math.floor(Math.random() * 4);
+                                
+                                const rect = {
+                                    x: Math.random() * (wallSize - windowWidth),
+                                    y: Math.random() * (buildingHeight - windowHeight),
+                                    width: windowWidth,
+                                    height: windowHeight
+                                };
+
+                                let hasOverlap = false;
+                                for (const existingRect of windowRectsByFace[faceIndex]) {
+                                    if (!(rect.x > existingRect.x + existingRect.width + minWindowMargin ||
+                                          rect.x + rect.width + minWindowMargin < existingRect.x ||
+                                          rect.y > existingRect.y + existingRect.height + minWindowMargin ||
+                                          rect.y + rect.height + minWindowMargin < existingRect.y)) {
+                                        hasOverlap = true;
+                                        break;
+                                    }
+                                }
+
+                                if (!hasOverlap) {
+                                    windowRectsByFace[faceIndex].push(rect);
+
+                                    const windowGeometry = new THREE.PlaneGeometry(rect.width, rect.height);
+                                    const windowMesh = new THREE.Mesh(windowGeometry, detailMaterial);
+                                    
+                                    const epsilon = 0.01;
+
+                                    const posX = rect.x + rect.width / 2;
+                                    const posY = rect.y + rect.height / 2;
+
+                                    switch (faceIndex) {
+                                        case 0: // Front face (+Z)
+                                            windowMesh.position.set(posX, posY, wallSize + epsilon);
+                                            break;
+                                        case 1: // Back face (-Z)
+                                            windowMesh.position.set(posX, posY, -epsilon);
+                                            windowMesh.rotation.y = Math.PI;
+                                            break;
+                                        case 2: // Right face (+X)
+                                            windowMesh.position.set(wallSize + epsilon, posY, posX);
+                                            windowMesh.rotation.y = Math.PI / 2;
+                                            break;
+                                        case 3: // Left face (-X)
+                                            windowMesh.position.set(-epsilon, posY, posX);
+                                            windowMesh.rotation.y = -Math.PI / 2;
+                                            break;
+                                    }
+                                    buildingGroup.add(windowMesh);
+                                    i++;
+                                }
+                            }
+                        }
+
+                        buildingGroup.position.set(wallX, 0, wallZ);
+                        buildings.add(buildingGroup);
                     }
                 }
             }
-            const geometry = new THREE.BufferGeometry().setFromPoints(lines);
-            const material = new THREE.LineBasicMaterial({ color: 0xffffff });
-            return new THREE.LineSegments(geometry, material);
+            return buildings;
         }
 
         function setupMoveJoystick() {
@@ -459,9 +555,32 @@
         }
 
         function spawnCat() {
-            const catGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-            const catMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            const catMesh = new THREE.Mesh(catGeometry, catMaterial);
+            const catGroup = new THREE.Group();
+            const eyeSpacing = 0.25;
+            
+            const eyeMaterial = new THREE.SpriteMaterial({ map: eyeTexture, color: 0xffffff });
+
+            // Create the two round eyes
+            const eyeL = new THREE.Sprite(eyeMaterial);
+            const eyeR = new THREE.Sprite(eyeMaterial.clone());
+
+            // Set the scale for round eyes
+            const eyeScale = 0.25; // Reduced from 0.3
+            eyeL.scale.set(eyeScale, eyeScale, 1);
+            eyeR.scale.set(eyeScale, eyeScale, 1);
+
+            eyeL.position.x = -eyeSpacing / 2;
+            eyeR.position.x = eyeSpacing / 2;
+            catGroup.add(eyeL);
+            catGroup.add(eyeR);
+
+            // Add a black body for presence and collision
+            const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            const bodyGeometry = new THREE.BoxGeometry(0.4, 0.5, 0.8);
+            const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            bodyMesh.position.y = -0.25;
+            bodyMesh.visible = false; // Make the body invisible but keep it for collisions
+            catGroup.add(bodyMesh);
 
             // Find a valid spawn position
             let spawnPos = null;
@@ -470,7 +589,7 @@
                 const distance = 10 + Math.random() * 10;
                 const pos = new THREE.Vector3(
                     camera.position.x + Math.cos(angle) * distance,
-                    0.25, // half of cat height
+                    1.0, // Eye level height
                     camera.position.z + Math.sin(angle) * distance
                 );
                 if (isPositionValid(pos)) {
@@ -478,34 +597,73 @@
                 }
             }
 
-            catMesh.position.copy(spawnPos);
-            scene.add(catMesh);
-            cats.push({ mesh: catMesh });
+            catGroup.position.copy(spawnPos);
+            scene.add(catGroup);
+            cats.push({ 
+                mesh: catGroup, 
+                radius: 0.5, // Approximate radius for collision
+                blinkTimer: Math.random() * 5,
+                isBlinking: false 
+            });
         }
 
         function updateCats(deltaTime) {
-            for (const cat of cats) {
-                const direction = new THREE.Vector3().subVectors(camera.position, cat.mesh.position);
-                direction.y = 0; // Keep the cat on the ground plane
+            cats.forEach((cat, i) => {
+                // --- Calculate potential new position (towards player) ---
+                let direction = new THREE.Vector3().subVectors(camera.position, cat.mesh.position);
+                direction.y = 0;
                 direction.normalize();
+                let velocity = direction.multiplyScalar(catSpeed * deltaTime);
+                let newPos = cat.mesh.position.clone().add(velocity);
 
-                const velocity = direction.multiplyScalar(catSpeed * deltaTime);
+                // --- Inter-cat collision resolution ---
+                cats.forEach((otherCat, j) => {
+                    if (i === j) return;
+                    
+                    const distance = newPos.distanceTo(otherCat.mesh.position);
+                    const minDistance = cat.radius + otherCat.radius;
 
-                // Use the same sliding collision logic as the player
-                const newPos = cat.mesh.position.clone();
+                    if (distance < minDistance) {
+                        const overlap = minDistance - distance;
+                        const pushVector = new THREE.Vector3().subVectors(newPos, otherCat.mesh.position).normalize();
+                        newPos.add(pushVector.multiplyScalar(overlap));
+                    }
+                });
 
-                const moveX = new THREE.Vector3(velocity.x, 0, 0);
-                if (isPositionValid(newPos.clone().add(moveX))) {
-                    newPos.add(moveX);
+                // --- Wall collision ---
+                const finalPos = cat.mesh.position.clone();
+                const moveX = new THREE.Vector3(newPos.x - finalPos.x, 0, 0);
+                if (isPositionValid(finalPos.clone().add(moveX))) {
+                    finalPos.add(moveX);
+                }
+                const moveZ = new THREE.Vector3(0, 0, newPos.z - finalPos.z);
+                if (isPositionValid(finalPos.clone().add(moveZ))) {
+                    finalPos.add(moveZ);
+                }
+                cat.mesh.position.copy(finalPos);
+
+                // --- Appearance ---
+                cat.mesh.lookAt(camera.position);
+
+                // Blinking logic
+                cat.blinkTimer += deltaTime;
+                const blinkInterval = 3 + Math.random() * 4;
+                const blinkDuration = 0.15;
+
+                if (!cat.isBlinking && cat.blinkTimer > blinkInterval) {
+                    cat.isBlinking = true;
+                    cat.mesh.children[0].visible = false; // eyeL
+                    cat.mesh.children[1].visible = false; // eyeR
+                    cat.blinkTimer = 0;
                 }
 
-                const moveZ = new THREE.Vector3(0, 0, velocity.z);
-                if (isPositionValid(newPos.clone().add(moveZ))) {
-                    newPos.add(moveZ);
+                if (cat.isBlinking && cat.blinkTimer > blinkDuration) {
+                    cat.isBlinking = false;
+                    cat.mesh.children[0].visible = true; // eyeL
+                    cat.mesh.children[1].visible = true; // eyeR
+                    cat.blinkTimer = 0;
                 }
-
-                cat.mesh.position.copy(newPos);
-            }
+            });
         }
 
         function animate() {

@@ -27,3 +27,10 @@ Le joueur doit s'échapper d'un labyrinthe de ruelles sombres et inquiétantes t
 
 *   **Victoire :** Trouver la sortie du labyrinthe.
 *   **Défaite :** Se faire attraper par un chat.
+
+## Regles
+
+*   Le jeu doit être un jeu WebXR utilisant A-Frame, Babylon.js, Three.js ou PlayCanvas.
+*   La taille totale du jeu, une fois compressé en zip, ne doit pas dépasser 13 Ko.
+*   Une des bibliothèques WebXR autorisées (A-Frame, Babylon.js, Three.js, ou PlayCanvas) peut être utilisée sans que sa taille ne soit comptée dans la limite des 13 Ko.
+*   Il est obligatoire d'utiliser la version spécifique de la bibliothèque fournie par le concours via un lien externe et de ne pas l'inclure dans le fichier zip.
