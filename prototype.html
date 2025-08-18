@@ -581,12 +581,23 @@
         }
 
         function isPositionValid(posToValidate) {
-            const gridX = Math.floor(posToValidate.x / wallSize);
-            const gridZ = Math.floor(posToValidate.z / wallSize);
+            const radius = 0.4; // Collision radius for player and cats
+            const pointsToCheck = [
+                posToValidate,
+                new THREE.Vector3(posToValidate.x + radius, posToValidate.y, posToValidate.z),
+                new THREE.Vector3(posToValidate.x - radius, posToValidate.y, posToValidate.z),
+                new THREE.Vector3(posToValidate.x, posToValidate.y, posToValidate.z + radius),
+                new THREE.Vector3(posToValidate.x, posToValidate.y, posToValidate.z - radius)
+            ];
 
-            if (gridX < 0 || gridX >= mazeWidth || gridZ < 0 || gridZ >= mazeHeight || (maze[gridZ] && maze[gridZ][gridX] === 1)) {
-                // console.error(`Collision! Pos: (${posToValidate.x.toFixed(2)}, ${posToValidate.z.toFixed(2)}), Grid: (${gridX}, ${gridZ})`);
-                return false;
+            for (const point of pointsToCheck) {
+                const gridX = Math.floor(point.x / wallSize);
+                const gridZ = Math.floor(point.z / wallSize);
+
+                if (gridX < 0 || gridX >= mazeWidth || gridZ < 0 || gridZ >= mazeHeight || (maze[gridZ] && maze[gridZ][gridX] === 1)) {
+                    // console.error(`Collision! Pos: (${point.x.toFixed(2)}, ${point.z.toFixed(2)}), Grid: (${gridX}, ${gridZ})`);
+                    return false; // One of the points is in a wall
+                }
             }
             return true;
         }
