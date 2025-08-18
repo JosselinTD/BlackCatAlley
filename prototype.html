@@ -666,11 +666,14 @@
 
             catGroup.position.copy(spawnPos);
             scene.add(catGroup);
-            cats.push({ 
+            cats.push({
                 mesh: catGroup, 
                 radius: 0.5, // Approximate radius for collision
                 blinkTimer: Math.random() * 5,
-                isBlinking: false 
+                isBlinking: false,
+                speed: catSpeed * (0.8 + Math.random() * 0.7),
+                state: 'moving',
+                stateTimer: 1 + Math.random() * 2
             });
         }
 
@@ -681,13 +684,11 @@
             const isLightOn = spotLight.visible;
 
             if (isLightOn) {
-                // Pre-calculate light properties for this frame
                 spotLight.getWorldPosition(lightPos);
                 spotLight.target.getWorldPosition(targetPos);
                 lightDir.subVectors(targetPos, lightPos).normalize();
             }
 
-            // Iterate backwards through the cats array to allow for safe removal
             for (let i = cats.length - 1; i >= 0; i--) {
                 const cat = cats[i];
                 let isLit = false;
@@ -695,8 +696,6 @@
                 if (isLightOn) {
                     const vectorToCat = new THREE.Vector3().subVectors(cat.mesh.position, lightPos);
                     const distanceToCat = vectorToCat.length();
-
-                    // Check if the cat is within the flashlight's range and cone
                     if (distanceToCat > 0 && distanceToCat < spotLight.distance) {
                         const angleToCat = lightDir.angleTo(vectorToCat.normalize());
                         if (angleToCat < spotLight.angle) {
@@ -706,50 +705,55 @@
                 }
 
                 if (isLit) {
-                    // If lit, remove the cat from the scene and the array
                     scene.remove(cat.mesh);
                     cats.splice(i, 1);
                 } else {
-                    // If not lit, update the cat's position and state
-                    
-                    // --- Calculate potential new position (towards player) ---
-                    let direction = new THREE.Vector3().subVectors(camera.position, cat.mesh.position);
-                    direction.y = 0;
-                    direction.normalize();
-                    let velocity = direction.multiplyScalar(catSpeed * deltaTime);
-                    let newPos = cat.mesh.position.clone().add(velocity);
-
-                    // --- Inter-cat collision resolution ---
-                    // Checks against the current state of the cats array.
-                    cats.forEach(otherCat => {
-                        if (cat === otherCat) return; // Don't collide with self
-                        
-                        const distance = newPos.distanceTo(otherCat.mesh.position);
-                        const minDistance = cat.radius + otherCat.radius;
-
-                        if (distance < minDistance) {
-                            const overlap = minDistance - distance;
-                            const pushVector = new THREE.Vector3().subVectors(newPos, otherCat.mesh.position).normalize();
-                            newPos.add(pushVector.multiplyScalar(overlap));
+                    // --- State Machine for Pausing/Moving ---
+                    cat.stateTimer -= deltaTime;
+                    if (cat.stateTimer <= 0) {
+                        if (cat.state === 'moving') {
+                            cat.state = 'pausing';
+                            cat.stateTimer = 0.5 + Math.random() * 1.0; // Pause for 0.5-1.5s
+                        } else { // state is 'pausing'
+                            cat.state = 'moving';
+                            cat.stateTimer = 1.5 + Math.random() * 2.0; // Move for 1.5-3.5s
                         }
-                    });
-
-                    // --- Wall collision ---
-                    const finalPos = cat.mesh.position.clone();
-                    const moveX = new THREE.Vector3(newPos.x - finalPos.x, 0, 0);
-                    if (isPositionValid(finalPos.clone().add(moveX))) {
-                        finalPos.add(moveX);
                     }
-                    const moveZ = new THREE.Vector3(0, 0, newPos.z - finalPos.z);
-                    if (isPositionValid(finalPos.clone().add(moveZ))) {
-                        finalPos.add(moveZ);
-                    }
-                    cat.mesh.position.copy(finalPos);
 
-                    // --- Appearance ---
+                    // --- Movement Logic (only if in 'moving' state) ---
+                    if (cat.state === 'moving') {
+                        let direction = new THREE.Vector3().subVectors(camera.position, cat.mesh.position);
+                        direction.y = 0;
+                        direction.normalize();
+                        let velocity = direction.multiplyScalar(cat.speed * deltaTime); // Use individual cat speed
+                        let newPos = cat.mesh.position.clone().add(velocity);
+
+                        cats.forEach(otherCat => {
+                            if (cat === otherCat) return;
+                            const distance = newPos.distanceTo(otherCat.mesh.position);
+                            const minDistance = cat.radius + otherCat.radius;
+                            if (distance < minDistance) {
+                                const overlap = minDistance - distance;
+                                const pushVector = new THREE.Vector3().subVectors(newPos, otherCat.mesh.position).normalize();
+                                newPos.add(pushVector.multiplyScalar(overlap));
+                            }
+                        });
+
+                        const finalPos = cat.mesh.position.clone();
+                        const moveX = new THREE.Vector3(newPos.x - finalPos.x, 0, 0);
+                        if (isPositionValid(finalPos.clone().add(moveX))) {
+                            finalPos.add(moveX);
+                        }
+                        const moveZ = new THREE.Vector3(0, 0, newPos.z - finalPos.z);
+                        if (isPositionValid(finalPos.clone().add(moveZ))) {
+                            finalPos.add(moveZ);
+                        }
+                        cat.mesh.position.copy(finalPos);
+                    }
+
+                    // --- Appearance (applies to both moving and paused cats) ---
                     cat.mesh.lookAt(camera.position);
 
-                    // Blinking logic
                     cat.blinkTimer += deltaTime;
                     const blinkInterval = 3 + Math.random() * 4;
                     const blinkDuration = 0.15;
