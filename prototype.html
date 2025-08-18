@@ -673,7 +673,8 @@
                 isBlinking: false,
                 speed: catSpeed * (0.8 + Math.random() * 0.7),
                 state: 'moving',
-                stateTimer: 1 + Math.random() * 2
+                stateTimer: 1 + Math.random() * 2,
+                wanderAngle: Math.random() * Math.PI * 2 // Initial wander direction
             });
         }
 
@@ -722,10 +723,23 @@
 
                     // --- Movement Logic (only if in 'moving' state) ---
                     if (cat.state === 'moving') {
-                        let direction = new THREE.Vector3().subVectors(camera.position, cat.mesh.position);
-                        direction.y = 0;
-                        direction.normalize();
-                        let velocity = direction.multiplyScalar(cat.speed * deltaTime); // Use individual cat speed
+                        // --- Calculate Wander + Homing Direction ---
+                        const targetDirection = new THREE.Vector3().subVectors(camera.position, cat.mesh.position);
+                        targetDirection.y = 0;
+                        targetDirection.normalize();
+
+                        // Update and apply wander
+                        const wanderStrength = 0.5; // How much the wander angle can change per frame
+                        const wanderInfluence = 0.4; // How much the wander direction affects the final direction (0-1)
+
+                        cat.wanderAngle += (Math.random() - 0.5) * wanderStrength;
+                        const wanderDirection = new THREE.Vector3(Math.cos(cat.wanderAngle), 0, Math.sin(cat.wanderAngle));
+
+                        // Blend the two directions
+                        const finalDirection = new THREE.Vector3().lerpVectors(targetDirection, wanderDirection, wanderInfluence);
+                        finalDirection.normalize();
+
+                        let velocity = finalDirection.multiplyScalar(cat.speed * deltaTime);
                         let newPos = cat.mesh.position.clone().add(velocity);
 
                         cats.forEach(otherCat => {
