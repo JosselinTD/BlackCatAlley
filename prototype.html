@@ -137,6 +137,7 @@
         const minBuildingHeight = 3, maxBuildingHeight = 12;
         const catSpawnInterval = 5; // seconds
         const catSpeed = 2;
+        const playerRadius = 0.5;
 
         // --- Game State ---
         let camera, scene, renderer, maze, clock, eyeTexture, spotLight, exitMesh;
@@ -764,6 +765,12 @@
                     cats.splice(i, 1);
                 } else {
                     const distanceToPlayer = cat.mesh.position.distanceTo(camera.position);
+
+                    if (distanceToPlayer < playerRadius + cat.radius) {
+                        gameOver('CAUGHT BY THE CAT!');
+                        return;
+                    }
+
                     if (distanceToPlayer < catSprintDistance && cat.state !== 'sprinting') {
                         cat.state = 'sprinting';
                     }
@@ -853,12 +860,16 @@
             }
         }
 
+        function gameOver(message) {
+            document.getElementById('info').innerHTML = message;
+            renderer.setAnimationLoop(null); // Stop the game
+        }
+
         function checkWinCondition() {
             if (!exitMesh) return;
             const distanceToExit = camera.position.distanceTo(exitMesh.position);
             if (distanceToExit < wallSize / 2) {
-                document.getElementById('info').innerHTML = 'YOU ESCAPED!';
-                renderer.setAnimationLoop(null); // Stop the game
+                gameOver('YOU ESCAPED!');
             }
         }
 
