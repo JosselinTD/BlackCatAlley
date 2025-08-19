@@ -14,6 +14,8 @@
         #joystick-move-handle { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; }
         #joystick-look-base { position: absolute; bottom: 20px; right: 20px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border-radius: 50%; display: none; }
         #joystick-look-handle { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; }
+        #battery-container { position: fixed; bottom: 180px; left: 50%; transform: translateX(-50%); width: 150px; height: 20px; border: 2px solid #fff; background-color: #333; border-radius: 5px; z-index: 10000; }
+        #battery-level { width: 100%; height: 100%; background-color: #0f0; transition: width 0.2s ease-out; }
     </style>
 </head>
 <body>
@@ -22,7 +24,9 @@
         (Utilisez le joystick droit pour regarder)
     </div>
     <button id="toggle-console" style="position: fixed; top: 10px; right: 10px; z-index: 10001; background: #333; color: #fff; border: 1px solid #fff; padding: 5px;">Toggle Console</button>
+    <button id="recharge-button" style="position: fixed; bottom: 130px; left: calc(50% + 80px); z-index: 10001; background: #333; color: #fff; border: 1px solid #fff; padding: 10px 15px; border-radius: 5px; font-family: monospace;">Recharge</button>
     <button id="flashlight-button" style="position: fixed; bottom: 130px; left: 50%; transform: translateX(-50%); z-index: 10001; background: #555; color: #fff; border: 1px solid #fff; padding: 10px 15px; border-radius: 5px; font-family: monospace;">Flashlight</button>
+    <div id="battery-container"><div id="battery-level"></div></div>
     <div id="console-container"></div>
     <div id="joystick-move-base"><div id="joystick-move-handle"></div></div>
     <div id="joystick-look-base"><div id="joystick-look-handle"></div></div>
@@ -140,6 +144,11 @@
         const lookInput = { x: 0, y: 0 };
         const cats = [];
         let spawnTimer = 0;
+        let flashlightOn = false;
+        const batteryMax = 100;
+        let batteryLevel = batteryMax;
+        const batteryDrainRate = 10; // units per second
+        const batteryChargeAmount = 15; // amount per "shake" (click)
 
         function createEyeTexture() {
             const canvas = document.createElement('canvas');
@@ -221,13 +230,43 @@
                 spotLight.visible = false;
                 if (camera.parent === null) scene.add(camera);
 
-                let flashlightOn = false;
                 document.getElementById('flashlight-button').addEventListener('click', () => {
-                    flashlightOn = !flashlightOn;
+                    if (batteryLevel > 0) {
+                        flashlightOn = !flashlightOn;
+                    } else {
+                        flashlightOn = false;
+                    }
                     spotLight.visible = flashlightOn;
+                });
+
+                document.getElementById('recharge-button').addEventListener('click', () => {
+                    batteryLevel = Math.min(batteryMax, batteryLevel + batteryChargeAmount);
                 });
             } catch (e) {
                 console.error(e);
+            }
+        }
+
+        function updateFlashlight(deltaTime) {
+            if (flashlightOn) {
+                batteryLevel -= batteryDrainRate * deltaTime;
+                if (batteryLevel <= 0) {
+                    batteryLevel = 0;
+                    flashlightOn = false;
+                    spotLight.visible = false;
+                }
+            }
+            
+            const batteryIndicator = document.getElementById('battery-level');
+            if(batteryIndicator) {
+                batteryIndicator.style.width = `${batteryLevel}%`;
+                if (batteryLevel < 30) {
+                    batteryIndicator.style.backgroundColor = '#f00'; // Red
+                } else if (batteryLevel < 60) {
+                    batteryIndicator.style.backgroundColor = '#ff0'; // Yellow
+                } else {
+                    batteryIndicator.style.backgroundColor = '#0f0'; // Green
+                }
             }
         }
 
@@ -832,6 +871,7 @@
                 handleMovement(deltaTime);
                 updateCats(deltaTime);
                 checkWinCondition();
+                updateFlashlight(deltaTime);
 
                 if (spawnTimer > catSpawnInterval) {
                     spawnCat();
