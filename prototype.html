@@ -129,13 +129,13 @@
         // --- Game Constants ---
         const moveSpeed = 5;
         const lookSpeed = 2;
-        const mazeWidth = 15, mazeHeight = 15, wallSize = 8; // Wallsize is now 8
+        const mazeWidth = 9, mazeHeight = 9, wallSize = 8; // Wallsize is now 8
         const minBuildingHeight = 3, maxBuildingHeight = 12;
         const catSpawnInterval = 5; // seconds
         const catSpeed = 2;
 
         // --- Game State ---
-        let camera, scene, renderer, maze, clock, eyeTexture, spotLight;
+        let camera, scene, renderer, maze, clock, eyeTexture, spotLight, exitMesh;
         const controls = { forward: false, backward: false, left: false, right: false };
         const lookInput = { x: 0, y: 0 };
         const cats = [];
@@ -173,10 +173,20 @@
                 const mazeMesh = createMazeMesh(maze);
                 scene.add(mazeMesh);
 
-                // Start the player in the center of the first empty cell
-                const startX = 1.5 * wallSize;
-                const startZ = 1.5 * wallSize;
-                camera.position.set(startX, 1.6, startZ);
+                // --- Exit Portal ---
+                const exitGeometry = new THREE.PlaneGeometry(wallSize, minBuildingHeight);
+                const exitMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+                exitMesh = new THREE.Mesh(exitGeometry, exitMaterial);
+                exitMesh.position.set(
+                    (mazeWidth - 0.5) * wallSize,
+                    minBuildingHeight / 2,
+                    (mazeHeight - 2) * wallSize
+                );
+                exitMesh.rotation.y = Math.PI / 2;
+                scene.add(exitMesh);
+
+                // Start the player at the maze entrance
+                camera.position.set(0.5 * wallSize, 1.6, 1.5 * wallSize);
 
                 addMovementListeners();
                 setupMoveJoystick();
@@ -241,6 +251,9 @@
                     stack.pop();
                 }
             }
+            // Create an entrance and an exit
+            maze[1][0] = 0; // Entrance at top-left
+            maze[height - 2][width - 1] = 0; // Exit at bottom-right
             return maze;
         }
 
@@ -801,6 +814,15 @@
             }
         }
 
+        function checkWinCondition() {
+            if (!exitMesh) return;
+            const distanceToExit = camera.position.distanceTo(exitMesh.position);
+            if (distanceToExit < wallSize / 2) {
+                document.getElementById('info').innerHTML = 'YOU ESCAPED!';
+                renderer.setAnimationLoop(null); // Stop the game
+            }
+        }
+
         function animate() {
             renderer.setAnimationLoop(() => {
                 const deltaTime = clock.getDelta();
@@ -809,8 +831,7 @@
                 handleRotation(deltaTime);
                 handleMovement(deltaTime);
                 updateCats(deltaTime);
-
-                
+                checkWinCondition();
 
                 if (spawnTimer > catSpawnInterval) {
                     spawnCat();
