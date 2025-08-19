@@ -141,6 +141,8 @@
 
         // --- Game State ---
         let camera, scene, renderer, maze, clock, eyeTexture, spotLight, exitMesh;
+        let audioListener, audioLoader;
+        const meowSounds = [];
         const controls = { forward: false, backward: false, left: false, right: false };
         const lookInput = { x: 0, y: 0 };
         const cats = [];
@@ -172,6 +174,17 @@
 
                 camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
                 
+                // --- Audio Setup ---
+                audioListener = new THREE.AudioListener();
+                camera.add(audioListener);
+                audioLoader = new THREE.AudioLoader();
+                ['meow1.mp3', 'meow2.mp3', 'meow3.mp3'].forEach(file => {
+                    audioLoader.load(file, (buffer) => {
+                        meowSounds.push(buffer);
+                        console.log(`Loaded sound: ${file}`);
+                    });
+                });
+
                 renderer = new THREE.WebGLRenderer({ antialias: true });
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 renderer.xr.enabled = true;
@@ -675,6 +688,11 @@
         }
 
         function spawnCat() {
+            if (meowSounds.length === 0) {
+                console.warn("Sounds not loaded yet, skipping cat spawn.");
+                return;
+            }
+
             const catGroup = new THREE.Group();
             const eyeSpacing = 0.25;
             
@@ -702,6 +720,12 @@
             bodyMesh.visible = false; // Make the body invisible but keep it for collisions
             catGroup.add(bodyMesh);
 
+            // --- Positional Audio ---
+            const sound = new THREE.PositionalAudio(audioListener);
+            sound.setRefDistance(10); // Distance at which the sound is at full volume
+            sound.setRolloffFactor(2); // How quickly the sound fades
+            catGroup.add(sound);
+
             // Find a valid spawn position
             let spawnPos = null;
             while (spawnPos === null) {
@@ -721,6 +745,8 @@
             scene.add(catGroup);
             cats.push({
                 mesh: catGroup, 
+                sound: sound,
+                meowTimer: 15 + Math.random() * 20, // Meow every 15-35 seconds
                 radius: 0.5, // Approximate radius for collision
                 blinkTimer: Math.random() * 5,
                 isBlinking: false,
@@ -855,6 +881,17 @@
                         cat.mesh.children[0].visible = true; // eyeL
                         cat.mesh.children[1].visible = true; // eyeR
                         cat.blinkTimer = 0;
+                    }
+
+                    // --- Sound ---
+                    cat.meowTimer -= deltaTime;
+                    if (cat.meowTimer <= 0) {
+                        if (cat.sound && !cat.sound.isPlaying && meowSounds.length > 0) {
+                            const randomSoundBuffer = meowSounds[Math.floor(Math.random() * meowSounds.length)];
+                            cat.sound.setBuffer(randomSoundBuffer);
+                            cat.sound.play();
+                        }
+                        cat.meowTimer = 15 + Math.random() * 20; // Reset timer
                     }
                 }
             }
