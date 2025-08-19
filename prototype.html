@@ -743,10 +743,15 @@
 
             catGroup.position.copy(spawnPos);
             scene.add(catGroup);
+            
+            // Play spawn sound
+            const randomSoundBuffer = meowSounds[Math.floor(Math.random() * meowSounds.length)];
+            sound.setBuffer(randomSoundBuffer);
+            sound.play();
+
             cats.push({
                 mesh: catGroup, 
                 sound: sound,
-                meowTimer: 15 + Math.random() * 20, // Meow every 15-35 seconds
                 radius: 0.5, // Approximate radius for collision
                 blinkTimer: Math.random() * 5,
                 isBlinking: false,
@@ -799,6 +804,12 @@
 
                     if (distanceToPlayer < catSprintDistance && cat.state !== 'sprinting') {
                         cat.state = 'sprinting';
+                        // Play sprint sound
+                        if (cat.sound && !cat.sound.isPlaying && meowSounds.length > 0) {
+                            const randomSoundBuffer = meowSounds[Math.floor(Math.random() * meowSounds.length)];
+                            cat.sound.setBuffer(randomSoundBuffer);
+                            cat.sound.play();
+                        }
                     }
 
                     // --- State Machine for Pausing/Moving (only if not sprinting) ---
@@ -881,17 +892,6 @@
                         cat.mesh.children[0].visible = true; // eyeL
                         cat.mesh.children[1].visible = true; // eyeR
                         cat.blinkTimer = 0;
-                    }
-
-                    // --- Sound ---
-                    cat.meowTimer -= deltaTime;
-                    if (cat.meowTimer <= 0) {
-                        if (cat.sound && !cat.sound.isPlaying && meowSounds.length > 0) {
-                            const randomSoundBuffer = meowSounds[Math.floor(Math.random() * meowSounds.length)];
-                            cat.sound.setBuffer(randomSoundBuffer);
-                            cat.sound.play();
-                        }
-                        cat.meowTimer = 15 + Math.random() * 20; // Reset timer
                     }
                 }
             }
