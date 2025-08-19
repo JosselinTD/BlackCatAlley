@@ -415,27 +415,23 @@
             return buildings;
         }
 
-        function setupMoveJoystick() {
-            const base = document.getElementById('joystick-move-base');
-            const handle = document.getElementById('joystick-move-handle');
-            base.style.display = 'block';
+        function setupJoystick(baseElem, handleElem, onUpdate) {
+            baseElem.style.display = 'block';
 
             setTimeout(() => {
-                const handleRadius = handle.offsetWidth / 2;
-                const baseRadius = base.offsetWidth / 2;
-                if (baseRadius === 0) {
-                    return;
-                }
+                const handleRadius = handleElem.offsetWidth / 2;
+                const baseRadius = baseElem.offsetWidth / 2;
+                if (baseRadius === 0) return;
                 
                 let touchId = null;
                 let center = { x: 0, y: 0 };
 
-                base.addEventListener('touchstart', e => {
+                baseElem.addEventListener('touchstart', e => {
                     e.preventDefault();
                     if (touchId === null) {
                         const touch = e.changedTouches[0];
                         touchId = touch.identifier;
-                        const baseRect = base.getBoundingClientRect();
+                        const baseRect = baseElem.getBoundingClientRect();
                         center = { x: baseRect.left + baseRadius, y: baseRect.top + baseRadius };
                     }
                 }, { passive: false });
@@ -455,29 +451,20 @@
                     const distance = Math.min(Math.sqrt(vec.x * vec.x + vec.y * vec.y), baseRadius);
                     const angle = Math.atan2(vec.y, vec.x);
 
-                    handle.style.left = `${baseRadius - handleRadius + Math.cos(angle) * distance}px`;
-                    handle.style.top = `${baseRadius - handleRadius + Math.sin(angle) * distance}px`;
+                    handleElem.style.left = `${baseRadius - handleRadius + Math.cos(angle) * distance}px`;
+                    handleElem.style.top = `${baseRadius - handleRadius + Math.sin(angle) * distance}px`;
 
-                    const deadzone = 0.2;
                     const normX = Math.cos(angle) * (distance / baseRadius);
                     const normY = Math.sin(angle) * (distance / baseRadius);
-
-                    controls.forward = normY < -deadzone;
-                    controls.backward = normY > deadzone;
-                    controls.left = normX < -deadzone;
-                    controls.right = normX > deadzone;
-
+                    onUpdate(normX, normY, distance / baseRadius);
                 }, { passive: false });
 
                 window.addEventListener('touchend', e => {
                     for (let i = 0; i < e.changedTouches.length; i++) {
                         if (e.changedTouches[i].identifier === touchId) {
-                            handle.style.left = `${baseRadius - handleRadius}px`;
-                            handle.style.top = `${baseRadius - handleRadius}px`;
-                            controls.forward = false;
-                            controls.backward = false;
-                            controls.left = false;
-                            controls.right = false;
+                            handleElem.style.left = `${baseRadius - handleRadius}px`;
+                            handleElem.style.top = `${baseRadius - handleRadius}px`;
+                            onUpdate(0, 0, 0);
                             touchId = null;
                             break;
                         }
@@ -486,76 +473,35 @@
             }, 100);
         }
 
-        function setupLookJoystick() {
-            const base = document.getElementById('joystick-look-base');
-            const handle = document.getElementById('joystick-look-handle');
-            base.style.display = 'block';
-
-            setTimeout(() => {
-                const handleRadius = handle.offsetWidth / 2;
-                const baseRadius = base.offsetWidth / 2;
-                if (baseRadius === 0) {
-                    return;
+        function setupMoveJoystick() {
+            const deadzone = 0.2;
+            setupJoystick(
+                document.getElementById('joystick-move-base'),
+                document.getElementById('joystick-move-handle'),
+                (normX, normY) => {
+                    controls.forward = normY < -deadzone;
+                    controls.backward = normY > deadzone;
+                    controls.left = normX < -deadzone;
+                    controls.right = normX > deadzone;
                 }
-                
-                let touchId = null;
-                let center = { x: 0, y: 0 };
+            );
+        }
 
-                base.addEventListener('touchstart', e => {
-                    e.preventDefault();
-                    if (touchId === null) {
-                        const touch = e.changedTouches[0];
-                        touchId = touch.identifier;
-                        const baseRect = base.getBoundingClientRect();
-                        center = { x: baseRect.left + baseRadius, y: baseRect.top + baseRadius };
-                    }
-                }, { passive: false });
-
-                document.addEventListener('touchmove', e => {
-                    if (touchId === null) return;
-                    let touch;
-                    for (let i = 0; i < e.changedTouches.length; i++) {
-                        if (e.changedTouches[i].identifier === touchId) {
-                            touch = e.changedTouches[i];
-                            break;
-                        }
-                    }
-                    if (!touch) return;
-
-                    const vec = { x: touch.clientX - center.x, y: touch.clientY - center.y };
-                    const distance = Math.min(Math.sqrt(vec.x * vec.x + vec.y * vec.y), baseRadius);
-                    const angle = Math.atan2(vec.y, vec.x);
-
-                    handle.style.left = `${baseRadius - handleRadius + Math.cos(angle) * distance}px`;
-                    handle.style.top = `${baseRadius - handleRadius + Math.sin(angle) * distance}px`;
-
-                    const deadzone = 0.2;
-                    const normX = Math.cos(angle) * (distance / baseRadius);
-                    const normY = Math.sin(angle) * (distance / baseRadius);
-
-                    if ((distance / baseRadius) < deadzone) {
+        function setupLookJoystick() {
+            const deadzone = 0.2;
+            setupJoystick(
+                document.getElementById('joystick-look-base'),
+                document.getElementById('joystick-look-handle'),
+                (normX, normY, magnitude) => {
+                    if (magnitude < deadzone) {
                         lookInput.x = 0;
                         lookInput.y = 0;
                     } else {
                         lookInput.x = normX;
                         lookInput.y = normY;
                     }
-
-                }, { passive: false });
-
-                window.addEventListener('touchend', e => {
-                    for (let i = 0; i < e.changedTouches.length; i++) {
-                        if (e.changedTouches[i].identifier === touchId) {
-                            handle.style.left = `${baseRadius - handleRadius}px`;
-                            handle.style.top = `${baseRadius - handleRadius}px`;
-                            lookInput.x = 0;
-                            lookInput.y = 0;
-                            touchId = null;
-                            break;
-                        }
-                    }
-                });
-            }, 100);
+                }
+            );
         }
 
         function addMovementListeners() {
