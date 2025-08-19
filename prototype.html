@@ -683,6 +683,8 @@
             const targetPos = new THREE.Vector3();
             const lightDir = new THREE.Vector3();
             const isLightOn = spotLight.visible;
+            const catSprintDistance = 5; // Distance to start sprinting
+            const catSprintSpeedMultiplier = 1.8; // Speed increase when sprinting
 
             if (isLightOn) {
                 spotLight.getWorldPosition(lightPos);
@@ -709,37 +711,47 @@
                     scene.remove(cat.mesh);
                     cats.splice(i, 1);
                 } else {
-                    // --- State Machine for Pausing/Moving ---
-                    cat.stateTimer -= deltaTime;
-                    if (cat.stateTimer <= 0) {
-                        if (cat.state === 'moving') {
-                            cat.state = 'pausing';
-                            cat.stateTimer = 0.5 + Math.random() * 1.0; // Pause for 0.5-1.5s
-                        } else { // state is 'pausing'
-                            cat.state = 'moving';
-                            cat.stateTimer = 1.5 + Math.random() * 2.0; // Move for 1.5-3.5s
+                    const distanceToPlayer = cat.mesh.position.distanceTo(camera.position);
+                    if (distanceToPlayer < catSprintDistance && cat.state !== 'sprinting') {
+                        cat.state = 'sprinting';
+                    }
+
+                    // --- State Machine for Pausing/Moving (only if not sprinting) ---
+                    if (cat.state !== 'sprinting') {
+                        cat.stateTimer -= deltaTime;
+                        if (cat.stateTimer <= 0) {
+                            if (cat.state === 'moving') {
+                                cat.state = 'pausing';
+                                cat.stateTimer = 0.5 + Math.random() * 1.0; // Pause for 0.5-1.5s
+                            } else { // state is 'pausing'
+                                cat.state = 'moving';
+                                cat.stateTimer = 1.5 + Math.random() * 2.0; // Move for 1.5-3.5s
+                            }
                         }
                     }
 
-                    // --- Movement Logic (only if in 'moving' state) ---
-                    if (cat.state === 'moving') {
-                        // --- Calculate Wander + Homing Direction ---
+                    // --- Movement Logic (only if in 'moving' or 'sprinting' state) ---
+                    if (cat.state === 'moving' || cat.state === 'sprinting') {
                         const targetDirection = new THREE.Vector3().subVectors(camera.position, cat.mesh.position);
                         targetDirection.y = 0;
                         targetDirection.normalize();
 
-                        // Update and apply wander
-                        const wanderStrength = 0.5; // How much the wander angle can change per frame
-                        const wanderInfluence = 0.4; // How much the wander direction affects the final direction (0-1)
+                        let finalDirection;
+                        let currentSpeed = cat.speed;
 
-                        cat.wanderAngle += (Math.random() - 0.5) * wanderStrength;
-                        const wanderDirection = new THREE.Vector3(Math.cos(cat.wanderAngle), 0, Math.sin(cat.wanderAngle));
+                        if (cat.state === 'sprinting') {
+                            finalDirection = targetDirection;
+                            currentSpeed *= catSprintSpeedMultiplier;
+                        } else { // 'moving' state
+                            const wanderStrength = 0.5;
+                            const wanderInfluence = 0.4;
+                            cat.wanderAngle += (Math.random() - 0.5) * wanderStrength;
+                            const wanderDirection = new THREE.Vector3(Math.cos(cat.wanderAngle), 0, Math.sin(cat.wanderAngle));
+                            finalDirection = new THREE.Vector3().lerpVectors(targetDirection, wanderDirection, wanderInfluence);
+                            finalDirection.normalize();
+                        }
 
-                        // Blend the two directions
-                        const finalDirection = new THREE.Vector3().lerpVectors(targetDirection, wanderDirection, wanderInfluence);
-                        finalDirection.normalize();
-
-                        let velocity = finalDirection.multiplyScalar(cat.speed * deltaTime);
+                        let velocity = finalDirection.multiplyScalar(currentSpeed * deltaTime);
                         let newPos = cat.mesh.position.clone().add(velocity);
 
                         cats.forEach(otherCat => {
@@ -765,7 +777,7 @@
                         cat.mesh.position.copy(finalPos);
                     }
 
-                    // --- Appearance (applies to both moving and paused cats) ---
+                    // --- Appearance (applies to all non-lit cats) ---
                     cat.mesh.lookAt(camera.position);
 
                     cat.blinkTimer += deltaTime;
