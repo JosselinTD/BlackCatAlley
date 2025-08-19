@@ -112,7 +112,7 @@
         const playerRadius = 0.5;
 
         // --- Game State ---
-        let camera, scene, renderer, maze, clock, eyeTexture, spotLight, exitMesh;
+        let camera, scene, renderer, maze, clock, spotLight, exitMesh;
         let audioListener, audioLoader, meowSoundBuffer;
         const controls = { forward: false, backward: false, left: false, right: false };
         const lookInput = { x: 0, y: 0 };
@@ -124,22 +124,9 @@
         const batteryDrainRate = 10; // units per second
         const batteryChargeAmount = 15; // amount per "shake" (click)
 
-        function createEyeTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 64;
-            canvas.height = 64;
-            const context = canvas.getContext('2d');
-            context.beginPath();
-            context.arc(32, 32, 30, 0, 2 * Math.PI);
-            context.fillStyle = '#FFFFFF';
-            context.fill();
-            return new THREE.CanvasTexture(canvas);
-        }
-
         function init() {
             try {
                 clock = new THREE.Clock();
-                eyeTexture = createEyeTexture();
                 scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x000000);
 
@@ -630,16 +617,11 @@
             const catGroup = new THREE.Group();
             const eyeSpacing = 0.25;
             
-            const eyeMaterial = new THREE.SpriteMaterial({ map: eyeTexture, color: 0xffffff });
-
-            // Create the two round eyes
-            const eyeL = new THREE.Sprite(eyeMaterial);
-            const eyeR = new THREE.Sprite(eyeMaterial.clone());
-
-            // Set the scale for round eyes
-            const eyeScale = 0.25; // Reduced from 0.3
-            eyeL.scale.set(eyeScale, eyeScale, 1);
-            eyeR.scale.set(eyeScale, eyeScale, 1);
+            // Create the two sphere eyes
+            const eyeGeometry = new THREE.SphereGeometry(0.1, 8, 8); // Small sphere, low detail
+            const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const eyeL = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            const eyeR = new THREE.Mesh(eyeGeometry, eyeMaterial);
 
             eyeL.position.x = -eyeSpacing / 2;
             eyeR.position.x = eyeSpacing / 2;
