@@ -34,3 +34,9 @@ Le joueur doit s'échapper d'un labyrinthe de ruelles sombres et inquiétantes t
 *   La taille totale du jeu, une fois compressé en zip, ne doit pas dépasser 13 Ko.
 *   Une des bibliothèques WebXR autorisées (A-Frame, Babylon.js, Three.js, ou PlayCanvas) peut être utilisée sans que sa taille ne soit comptée dans la limite des 13 Ko.
 *   Il est obligatoire d'utiliser la version spécifique de la bibliothèque fournie par le concours via un lien externe et de ne pas l'inclure dans le fichier zip.
+
+## Tests locaux
+
+* openssl req -newkey rsa:2048 -new -nodes -x509 -days 3650 -keyout key.pem -out cert.pem
+* npm i -g http-server
+* http-server -S -C cert.pem -o
