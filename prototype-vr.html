@@ -86,6 +86,10 @@
                         currentSession.removeEventListener('end', onSessionEnded);
                         button.textContent = 'ENTER VR';
                         currentSession = null;
+                        // If the session ended because of a game over, show the screen
+                        if (gameIsOver) {
+                            showGameOverScreen(gameOverMessage);
+                        }
                     }
                     button.style.display = '';
                     button.style.cursor = 'pointer';
@@ -161,6 +165,8 @@
         let batteryLevel = batteryMax;
         const batteryDrainRate = 10; // units per second
         const batteryChargeAmount = 15; // amount per "shake" (click)
+        let gameIsOver = false;
+        let gameOverMessage = '';
 
         function init() {
             try {
@@ -855,8 +861,7 @@
             }
         }
 
-        function gameOver(message) {
-            renderer.setAnimationLoop(null); // Stop the game
+        function showGameOverScreen(message) {
             document.getElementById('info').style.display = 'none';
             const overlay = document.getElementById('gameover-overlay');
             const messageEl = document.getElementById('gameover-message');
@@ -866,7 +871,23 @@
             }
         }
 
+        function gameOver(message) {
+            if (gameIsOver) return; // Prevent multiple calls
+            gameIsOver = true;
+            gameOverMessage = message;
+            renderer.setAnimationLoop(null); // Stop game logic
+
+            const session = renderer.xr.getSession();
+            if (session) {
+                session.end(); // Request to end VR session, which will trigger onSessionEnded
+            } else {
+                // Not in VR, show screen immediately
+                showGameOverScreen(message);
+            }
+        }
+
         function checkWinCondition() {
+            if (gameIsOver) return;
             if (!exitMesh) return;
             const distanceToExit = player.position.distanceTo(exitMesh.position);
             if (distanceToExit < wallSize / 2) {
@@ -876,6 +897,7 @@
 
         function animate() {
             renderer.setAnimationLoop(() => {
+                if (gameIsOver) return;
                 const deltaTime = clock.getDelta();
                 spawnTimer += deltaTime;
 
