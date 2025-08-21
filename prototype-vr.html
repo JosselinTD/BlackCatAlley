@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Black Cat Alley - Prototype</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; background-color: #000; color: #fff; font-family: monospace; }
+        canvas { display: block; }
+        #info { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; }
+        a { color: #fff; }
+        #joystick-move-base { position: absolute; bottom: 20px; left: 20px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border-radius: 50%; display: none; }
+        #joystick-move-handle { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; }
+        #joystick-look-base { position: absolute; bottom: 20px; right: 20px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border-radius: 50%; display: none; }
+        #joystick-look-handle { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; }
+        #battery-container { position: fixed; bottom: 180px; left: 50%; transform: translateX(-50%); width: 150px; height: 20px; border: 2px solid #fff; background-color: #333; border-radius: 5px; z-index: 10000; }
+        #battery-level { width: 100%; height: 100%; background-color: #0f0; transition: width 0.2s ease-out; }
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            color: #fff;
+            z-index: 10002;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 2em;
+            cursor: pointer;
+            text-align: center;
+        }
+        #gameover-overlay {
+            display: none; /* Hidden by default */
+            cursor: default;
+        }
+        #gameover-message {
+            margin-bottom: 40px;
+        }
+        #new-game-button {
+            font-family: monospace;
+            font-size: 0.8em;
+            padding: 10px 20px;
+            background: #333;
+            color: #fff;
+            border: 1px solid #fff;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="start-overlay" class="overlay">Click to Start</div>
+    <div id="gameover-overlay" class="overlay">
+        <div id="gameover-message"></div>
+        <button id="new-game-button">Start New Game</button>
+    </div>
+
+    <div id="info">
+        Black Cat Alley - Prototype<br/>
+        (Utilisez le joystick droit pour regarder)
+    </div>
+    <button id="recharge-button" style="position: fixed; bottom: 130px; left: calc(50% + 80px); z-index: 10001; background: #333; color: #fff; border: 1px solid #fff; padding: 10px 15px; border-radius: 5px; font-family: monospace;">Recharge</button>
+    <button id="flashlight-button" style="position: fixed; bottom: 130px; left: 50%; transform: translateX(-50%); z-index: 10001; background: #555; color: #fff; border: 1px solid #fff; padding: 10px 15px; border-radius: 5px; font-family: monospace;">Flashlight</button>
+    <div id="battery-container"><div id="battery-level"></div></div>
+    <div id="joystick-move-base"><div id="joystick-move-handle"></div></div>
+    <div id="joystick-look-base"><div id="joystick-look-handle"></div></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // From three.js/examples/jsm/webxr/VRButton.js
+        const VRButton = {
+            createButton: function (renderer) {
+                const button = document.createElement('button');
+                function showEnterVR() {
+                    let currentSession = null;
+                    async function onSessionStarted(session) {
+                        session.addEventListener('end', onSessionEnded);
+                        await renderer.xr.setSession(session);
+                        button.textContent = 'EXIT VR';
+                        currentSession = session;
+                    }
+                    function onSessionEnded() {
+                        currentSession.removeEventListener('end', onSessionEnded);
+                        button.textContent = 'ENTER VR';
+                        currentSession = null;
+                    }
+                    button.style.display = '';
+                    button.style.cursor = 'pointer';
+                    button.style.left = 'calc(50% - 50px)';
+                    button.style.width = '100px';
+                    button.textContent = 'ENTER VR';
+                    button.onclick = function () {
+                        if (currentSession === null) {
+                            navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] }).then(onSessionStarted);
+                        } else {
+                            currentSession.end();
+                        }
+                    };
+                }
+                function showWebXRNotFound() {
+                    button.style.display = '';
+                    button.style.cursor = 'auto';
+                    button.style.left = 'calc(50% - 75px)';
+                    button.style.width = '150px';
+                    button.textContent = 'VR NOT SUPPORTED';
+                    button.onclick = null;
+                }
+                button.id = 'VRButton';
+                button.style.display = 'none';
+                button.style.position = 'absolute';
+                button.style.bottom = '20px';
+                button.style.padding = '12px 6px';
+                button.style.border = '1px solid #fff';
+                button.style.borderRadius = '4px';
+                button.style.background = 'rgba(0,0,0,0.1)';
+                button.style.color = '#fff';
+                button.style.font = 'normal 13px sans-serif';
+                button.style.textAlign = 'center';
+                button.style.opacity = '0.5';
+                button.style.outline = 'none';
+                button.style.zIndex = '999';
+                if ('xr' in navigator) {
+                    navigator.xr.isSessionSupported('immersive-vr').then(supported => supported ? showEnterVR() : showWebXRNotFound());
+                } else {
+                    const message = document.createElement('a');
+                    if (window.isSecureContext === false) {
+                        message.href = document.location.href.replace(/^http:/, 'https:');
+                        message.innerHTML = 'WEBXR NEEDS HTTPS';
+                    } else {
+                        message.href = 'https://immersiveweb.dev/';
+                        message.innerHTML = 'WEBXR NOT AVAILABLE';
+                    }
+                    return message; // Return message element if no XR
+                }
+                return button;
+            }
+        };
+    </script>
+    <script>
+        // --- Game Constants ---
+        const moveSpeed = 5;
+        const lookSpeed = 2;
+        const mazeWidth = 9, mazeHeight = 9, wallSize = 8; // Wallsize is now 8
+        const minBuildingHeight = 3, maxBuildingHeight = 12;
+        const catSpawnInterval = 5; // seconds
+        const catSpeed = 2;
+        const playerRadius = 0.5;
+
+        // --- Game State ---
+        let camera, player, scene, renderer, maze, clock, spotLight, exitMesh;
+        let audioListener, audioLoader, meowSoundBuffer;
+        const controls = { forward: false, backward: false, left: false, right: false };
+        const lookInput = { x: 0, y: 0 };
+        const cats = [];
+        let spawnTimer = 0;
+        let flashlightOn = false;
+        const batteryMax = 100;
+        let batteryLevel = batteryMax;
+        const batteryDrainRate = 10; // units per second
+        const batteryChargeAmount = 15; // amount per "shake" (click)
+
+        function init() {
+            try {
+                clock = new THREE.Clock();
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x000000);
+
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                
+                // --- Audio Setup ---
+                audioListener = new THREE.AudioListener();
+                camera.add(audioListener);
+                audioLoader = new THREE.AudioLoader();
+
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.xr.enabled = true;
+                document.body.appendChild(renderer.domElement);
+
+                document.body.appendChild(VRButton.createButton(renderer));
+
+                maze = generateMaze(mazeWidth, mazeHeight);
+                const mazeMesh = createMazeMesh(maze);
+                scene.add(mazeMesh);
+
+                // --- Exit Portal ---
+                const exitGeometry = new THREE.PlaneGeometry(wallSize, minBuildingHeight);
+                const exitMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+                exitMesh = new THREE.Mesh(exitGeometry, exitMaterial);
+                exitMesh.position.set(
+                    (mazeWidth - 0.5) * wallSize,
+                    minBuildingHeight / 2,
+                    (mazeHeight - 2) * wallSize
+                );
+                exitMesh.rotation.y = Math.PI / 2;
+                scene.add(exitMesh);
+
+                // --- Player Setup ---
+                player = new THREE.Group();
+                player.position.set(0.5 * wallSize, 0, 1.5 * wallSize); // Start at floor level
+                scene.add(player);
+                player.add(camera);
+                camera.position.y = 1.6; // Set camera height for non-VR view
+                // The camera's height (y) will be managed by the WebXR session.
+
+                addMovementListeners();
+                setupMoveJoystick();
+                setupLookJoystick();
+                window.addEventListener('resize', onWindowResize, false);
+
+                // --- Ground Plane ---
+                const groundGeometry = new THREE.PlaneGeometry(mazeWidth * wallSize, mazeHeight * wallSize);
+                const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a }); // Even darker grey for ground
+                const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
+                groundMesh.rotation.x = -Math.PI / 2; // Lay it flat
+                groundMesh.position.set((mazeWidth * wallSize) / 2, 0, (mazeHeight * wallSize) / 2);
+                scene.add(groundMesh);
+
+                // --- Flashlight Setup ---
+                spotLight = new THREE.SpotLight(0xffffff, 100);
+                spotLight.angle = Math.PI / 16; // ~11 degrees, narrower beam
+                spotLight.penumbra = 0; // Hardest edge
+                spotLight.decay = 0; // No falloff for arcade style
+                spotLight.distance = 40;
+
+                // Attach light to camera
+                camera.add(spotLight);
+                camera.add(spotLight.target);
+
+                // Position the light source below the camera (chest level)
+                spotLight.position.set(0, -0.6, 0);
+                
+                // Position the target in front of the light source
+                spotLight.target.position.set(0, -0.6, -1);
+
+                spotLight.visible = false;
+                // No need to add camera to scene directly, it's in the player group
+                // if (camera.parent === null) scene.add(camera);
+
+                document.getElementById('flashlight-button').addEventListener('click', () => {
+                    if (batteryLevel > 0) {
+                        flashlightOn = !flashlightOn;
+                    } else {
+                        flashlightOn = false;
+                    }
+                    spotLight.visible = flashlightOn;
+                });
+
+                document.getElementById('recharge-button').addEventListener('click', () => {
+                    batteryLevel = Math.min(batteryMax, batteryLevel + batteryChargeAmount);
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function updateFlashlight(deltaTime) {
+            if (flashlightOn) {
+                batteryLevel -= batteryDrainRate * deltaTime;
+                if (batteryLevel <= 0) {
+                    batteryLevel = 0;
+                    flashlightOn = false;
+                    spotLight.visible = false;
+                }
+            }
+            
+            const batteryIndicator = document.getElementById('battery-level');
+            if(batteryIndicator) {
+                batteryIndicator.style.width = `${batteryLevel}%`;
+                if (batteryLevel < 30) {
+                    batteryIndicator.style.backgroundColor = '#f00'; // Red
+                } else if (batteryLevel < 60) {
+                    batteryIndicator.style.backgroundColor = '#ff0'; // Yellow
+                } else {
+                    batteryIndicator.style.backgroundColor = '#0f0'; // Green
+                }
+            }
+        }
+
+        function generateMaze(width, height) {
+            const maze = Array(height).fill(0).map(() => Array(width).fill(1));
+            const stack = [[1, 1]];
+            maze[1][1] = 0;
+            while (stack.length > 0) {
+                const [cx, cy] = stack[stack.length - 1];
+                const neighbors = [];
+                if (cx > 1 && maze[cy][cx - 2] === 1) neighbors.push([cx - 2, cy, cx - 1, cy]);
+                if (cx < width - 2 && maze[cy][cx + 2] === 1) neighbors.push([cx + 2, cy, cx + 1, cy]);
+                if (cy > 1 && maze[cy - 2][cx] === 1) neighbors.push([cx, cy - 2, cx, cy - 1]);
+                if (cy < height - 2 && maze[cy + 2][cx] === 1) neighbors.push([cx, cy + 2, cx, cy + 1]);
+                if (neighbors.length > 0) {
+                    const [nx, ny, wx, wy] = neighbors[Math.floor(Math.random() * neighbors.length)];
+                    maze[ny][nx] = 0;
+                    maze[wy][wx] = 0;
+                    stack.push([nx, ny]);
+                } else {
+                    stack.pop();
+                }
+            }
+            // Create an entrance and an exit
+            maze[1][0] = 0; // Entrance at top-left
+            maze[height - 2][width - 1] = 0; // Exit at bottom-right
+            return maze;
+        }
+
+        function createMazeMesh(maze) {
+            const buildings = new THREE.Group();
+            const width = maze[0].length;
+            const height = maze.length;
+
+                        const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 }); // Dark grey so it can be lit, standard for better quality
+            const outlineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff }); // White outlines
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    if (maze[y][x] === 1) { // It's a wall block
+                        const wallX = x * wallSize;
+                        const wallZ = y * wallSize;
+                        const buildingHeight = minBuildingHeight + Math.random() * (maxBuildingHeight - minBuildingHeight);
+
+                        // Create the solid black building
+                        const wallGeometry = new THREE.BoxGeometry(wallSize, buildingHeight, wallSize);
+                        const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
+                        wallMesh.position.set(wallSize / 2, buildingHeight / 2, wallSize / 2);
+
+                        // Create the white outline for the top
+                        const topOutlineGeometry = new THREE.BufferGeometry();
+                        const topVertices = new Float32Array([
+                            0, buildingHeight, 0,
+                            wallSize, buildingHeight, 0,
+
+                            wallSize, buildingHeight, 0,
+                            wallSize, buildingHeight, wallSize,
+
+                            wallSize, buildingHeight, wallSize,
+                            0, buildingHeight, wallSize,
+
+                            0, buildingHeight, wallSize,
+                            0, buildingHeight, 0
+                        ]);
+                        topOutlineGeometry.setAttribute('position', new THREE.BufferAttribute(topVertices, 3));
+                        const topOutline = new THREE.LineSegments(topOutlineGeometry, outlineMaterial);
+
+                        // Group building and outline together
+                        const buildingGroup = new THREE.Group();
+                        buildingGroup.add(wallMesh);
+                        buildingGroup.add(topOutline);
+
+                        // Create the BLACK outline for the bottom to separate from the ground
+                        const bottomOutlineGeometry = new THREE.BufferGeometry();
+                        const y_offset = 0.01; // Tiny offset to prevent z-fighting with the ground
+                        const bottomVertices = new Float32Array([
+                            0, y_offset, 0,
+                            wallSize, y_offset, 0,
+
+                            wallSize, y_offset, 0,
+                            wallSize, y_offset, wallSize,
+
+                            wallSize, y_offset, wallSize,
+                            0, y_offset, wallSize,
+
+                            0, y_offset, wallSize,
+                            0, y_offset, 0
+                        ]);
+                        bottomOutlineGeometry.setAttribute('position', new THREE.BufferAttribute(bottomVertices, 3));
+                        const bottomOutlineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
+                        const bottomOutline = new THREE.LineSegments(bottomOutlineGeometry, bottomOutlineMaterial);
+                        buildingGroup.add(bottomOutline);
+
+                        // Add white details (windows) with overlap prevention
+                        const detailMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                        const windowProbability = 0.8;
+                        const minWindowMargin = 0.4;
+
+                        if (Math.random() < windowProbability) {
+                            const windowRectsByFace = { 0: [], 1: [], 2: [], 3: [] };
+                            const numWindows = Math.floor(Math.random() * 8) + 4;
+                            let attempts = 0;
+
+                            for (let i = 0; i < numWindows && attempts < 100; attempts++) {
+                                const windowWidth = 0.5 + Math.random() * 1.5;
+                                const windowHeight = 0.5 + Math.random() * 2.5;
+                                
+                                const faceIndex = Math.floor(Math.random() * 4);
+                                
+                                const rect = {
+                                    x: Math.random() * (wallSize - windowWidth),
+                                    y: Math.random() * (buildingHeight - windowHeight),
+                                    width: windowWidth,
+                                    height: windowHeight
+                                };
+
+                                let hasOverlap = false;
+                                for (const existingRect of windowRectsByFace[faceIndex]) {
+                                    if (!(rect.x > existingRect.x + existingRect.width + minWindowMargin ||
+                                          rect.x + rect.width + minWindowMargin < existingRect.x ||
+                                          rect.y > existingRect.y + existingRect.height + minWindowMargin ||
+                                          rect.y + rect.height + minWindowMargin < existingRect.y)) {
+                                        hasOverlap = true;
+                                        break;
+                                    }
+                                }
+
+                                if (!hasOverlap) {
+                                    windowRectsByFace[faceIndex].push(rect);
+
+                                    const windowGeometry = new THREE.PlaneGeometry(rect.width, rect.height);
+                                    const windowMesh = new THREE.Mesh(windowGeometry, detailMaterial);
+                                    
+                                    const epsilon = 0.01;
+
+                                    const posX = rect.x + rect.width / 2;
+                                    const posY = rect.y + rect.height / 2;
+
+                                    switch (faceIndex) {
+                                        case 0: // Front face (+Z)
+                                            windowMesh.position.set(posX, posY, wallSize + epsilon);
+                                            break;
+                                        case 1: // Back face (-Z)
+                                            windowMesh.position.set(posX, posY, -epsilon);
+                                            windowMesh.rotation.y = Math.PI;
+                                            break;
+                                        case 2: // Right face (+X)
+                                            windowMesh.position.set(wallSize + epsilon, posY, posX);
+                                            windowMesh.rotation.y = Math.PI / 2;
+                                            break;
+                                        case 3: // Left face (-X)
+                                            windowMesh.position.set(-epsilon, posY, posX);
+                                            windowMesh.rotation.y = -Math.PI / 2;
+                                            break;
+                                    }
+                                    buildingGroup.add(windowMesh);
+                                    i++;
+                                }
+                            }
+                        }
+
+                        buildingGroup.position.set(wallX, 0, wallZ);
+                        buildings.add(buildingGroup);
+                    }
+                }
+            }
+            return buildings;
+        }
+
+        function setupJoystick(baseElem, handleElem, onUpdate) {
+            baseElem.style.display = 'block';
+
+            setTimeout(() => {
+                const handleRadius = handleElem.offsetWidth / 2;
+                const baseRadius = baseElem.offsetWidth / 2;
+                if (baseRadius === 0) return;
+                
+                let touchId = null;
+                let center = { x: 0, y: 0 };
+
+                baseElem.addEventListener('touchstart', e => {
+                    e.preventDefault();
+                    if (touchId === null) {
+                        const touch = e.changedTouches[0];
+                        touchId = touch.identifier;
+                        const baseRect = baseElem.getBoundingClientRect();
+                        center = { x: baseRect.left + baseRadius, y: baseRect.top + baseRadius };
+                    }
+                }, { passive: false });
+
+                document.addEventListener('touchmove', e => {
+                    if (touchId === null) return;
+                    let touch;
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        if (e.changedTouches[i].identifier === touchId) {
+                            touch = e.changedTouches[i];
+                            break;
+                        }
+                    }
+                    if (!touch) return;
+
+                    const vec = { x: touch.clientX - center.x, y: touch.clientY - center.y };
+                    const distance = Math.min(Math.sqrt(vec.x * vec.x + vec.y * vec.y), baseRadius);
+                    const angle = Math.atan2(vec.y, vec.x);
+
+                    handleElem.style.left = `${baseRadius - handleRadius + Math.cos(angle) * distance}px`;
+                    handleElem.style.top = `${baseRadius - handleRadius + Math.sin(angle) * distance}px`;
+
+                    const normX = Math.cos(angle) * (distance / baseRadius);
+                    const normY = Math.sin(angle) * (distance / baseRadius);
+                    onUpdate(normX, normY, distance / baseRadius);
+                }, { passive: false });
+
+                window.addEventListener('touchend', e => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        if (e.changedTouches[i].identifier === touchId) {
+                            handleElem.style.left = `${baseRadius - handleRadius}px`;
+                            handleElem.style.top = `${baseRadius - handleRadius}px`;
+                            onUpdate(0, 0, 0);
+                            touchId = null;
+                            break;
+                        }
+                    }
+                });
+            }, 100);
+        }
+
+        function setupMoveJoystick() {
+            const deadzone = 0.2;
+            setupJoystick(
+                document.getElementById('joystick-move-base'),
+                document.getElementById('joystick-move-handle'),
+                (normX, normY) => {
+                    controls.forward = normY < -deadzone;
+                    controls.backward = normY > deadzone;
+                    controls.left = normX < -deadzone;
+                    controls.right = normX > deadzone;
+                }
+            );
+        }
+
+        function setupLookJoystick() {
+            const deadzone = 0.2;
+            setupJoystick(
+                document.getElementById('joystick-look-base'),
+                document.getElementById('joystick-look-handle'),
+                (normX, normY, magnitude) => {
+                    if (magnitude < deadzone) {
+                        lookInput.x = 0;
+                        lookInput.y = 0;
+                    } else {
+                        lookInput.x = normX;
+                        lookInput.y = normY;
+                    }
+                }
+            );
+        }
+
+        function addMovementListeners() {
+            window.addEventListener('keydown', (e) => {
+                switch(e.code) {
+                    case 'KeyW': case 'KeyZ': controls.forward = true; break;
+                    case 'KeyS': controls.backward = true; break;
+                    case 'KeyA': case 'KeyQ': controls.left = true; break;
+                    case 'KeyD': controls.right = true; break;
+                }
+            });
+            window.addEventListener('keyup', (e) => {
+                switch(e.code) {
+                    case 'KeyW': case 'KeyZ': controls.forward = false; break;
+                    case 'KeyS': controls.backward = false; break;
+                    case 'KeyA': case 'KeyQ': controls.left = false; break;
+                    case 'KeyD': controls.right = false; break;
+                }
+            });
+        }
+
+        function handleMovement(deltaTime) {
+            const velocity = new THREE.Vector3();
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+            direction.y = 0;
+            direction.normalize();
+
+            const leftVector = new THREE.Vector3().crossVectors(camera.up, direction);
+
+            if (controls.forward) velocity.add(direction);
+            if (controls.backward) velocity.sub(direction);
+            if (controls.left) velocity.add(leftVector);
+            if (controls.right) velocity.sub(leftVector);
+
+            velocity.normalize().multiplyScalar(moveSpeed * deltaTime);
+
+            // Check each axis separately
+            const newPosX = player.position.clone().add(new THREE.Vector3(velocity.x, 0, 0));
+            if (isPositionValid(newPosX)) {
+                player.position.x = newPosX.x;
+            }
+
+            const newPosZ = player.position.clone().add(new THREE.Vector3(0, 0, velocity.z));
+            if (isPositionValid(newPosZ)) {
+                player.position.z = newPosZ.z;
+            }
+        }
+
+        function isPositionValid(posToValidate) {
+            const radius = 0.4; // Collision radius for player and cats
+            const pointsToCheck = [
+                posToValidate,
+                new THREE.Vector3(posToValidate.x + radius, posToValidate.y, posToValidate.z),
+                new THREE.Vector3(posToValidate.x - radius, posToValidate.y, posToValidate.z),
+                new THREE.Vector3(posToValidate.x, posToValidate.y, posToValidate.z + radius),
+                new THREE.Vector3(posToValidate.x, posToValidate.y, posToValidate.z - radius)
+            ];
+
+            for (const point of pointsToCheck) {
+                const gridX = Math.floor(point.x / wallSize);
+                const gridZ = Math.floor(point.z / wallSize);
+
+                if (gridX < 0 || gridX >= mazeWidth || gridZ < 0 || gridZ >= mazeHeight || (maze[gridZ] && maze[gridZ][gridX] === 1)) {
+                    // console.error(`Collision! Pos: (${point.x.toFixed(2)}, ${point.z.toFixed(2)}), Grid: (${gridX}, ${gridZ})`);
+                    return false; // One of the points is in a wall
+                }
+            }
+            return true;
+        }
+
+        function handleRotation(deltaTime) {
+            if (lookInput.x === 0 && lookInput.y === 0) return;
+
+            const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+            euler.setFromQuaternion(camera.quaternion);
+
+            euler.y -= lookInput.x * lookSpeed * deltaTime;
+            euler.x -= lookInput.y * lookSpeed * deltaTime;
+            euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
+            
+            camera.quaternion.setFromEuler(euler);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function playCatSound(cat) {
+            if (!cat.sound || !meowSoundBuffer) return;
+
+            if (cat.sound.isPlaying) {
+                cat.sound.stop();
+            }
+            cat.sound.setBuffer(meowSoundBuffer);
+            
+            // 1. Randomize playback rate for pitch variation (wider range)
+            const playbackRate = 0.7 + Math.random() * 0.8; // Range: 0.7 to 1.5
+            cat.sound.setPlaybackRate(playbackRate);
+
+            // 2. Randomize volume
+            const volume = 0.7 + Math.random() * 0.3; // Range: 70% to 100%
+            cat.sound.setVolume(volume);
+
+            // 3. Randomize filter to create a "muffled" effect
+            let filter = cat.sound.getFilter();
+            if (!filter) {
+                // Create the filter if it doesn't exist for this sound object
+                filter = cat.sound.context.createBiquadFilter();
+                cat.sound.setFilter(filter);
+            }
+            filter.type = 'lowpass';
+            // High frequency = clear sound, Low frequency = muffled sound
+            filter.frequency.setValueAtTime(1500 + Math.random() * 8500, cat.sound.context.currentTime); // Range 1500Hz to 10000Hz
+            
+            cat.sound.play();
+        }
+
+        function spawnCat() {
+            if (!meowSoundBuffer) {
+                return;
+            }
+
+            const catGroup = new THREE.Group();
+            const eyeSpacing = 0.25;
+            
+            // Create the two sphere eyes
+            const eyeGeometry = new THREE.SphereGeometry(0.1, 8, 8); // Small sphere, low detail
+            const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const eyeL = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            const eyeR = new THREE.Mesh(eyeGeometry, eyeMaterial);
+
+            eyeL.position.x = -eyeSpacing / 2;
+            eyeR.position.x = eyeSpacing / 2;
+            catGroup.add(eyeL);
+            catGroup.add(eyeR);
+
+            // Add a black body for presence and collision
+            const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            const bodyGeometry = new THREE.BoxGeometry(0.4, 0.5, 0.8);
+            const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            bodyMesh.position.y = -0.25;
+            bodyMesh.visible = false; // Make the body invisible but keep it for collisions
+            catGroup.add(bodyMesh);
+
+            // --- Positional Audio ---
+            const sound = new THREE.PositionalAudio(audioListener);
+            sound.setRefDistance(10); // Distance at which the sound is at full volume
+            sound.setRolloffFactor(2); // How quickly the sound fades
+            catGroup.add(sound);
+
+            // Find a valid spawn position
+            let spawnPos = null;
+            while (spawnPos === null) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 10 + Math.random() * 10;
+                const pos = new THREE.Vector3(
+                    player.position.x + Math.cos(angle) * distance,
+                    1.0, // Eye level height
+                    player.position.z + Math.sin(angle) * distance
+                );
+                if (isPositionValid(pos)) {
+                    spawnPos = pos;
+                }
+            }
+
+            catGroup.position.copy(spawnPos);
+            scene.add(catGroup);
+            
+            const newCat = {
+                mesh: catGroup, 
+                sound: sound,
+                radius: 0.5, // Approximate radius for collision
+                blinkTimer: Math.random() * 5,
+                isBlinking: false,
+                speed: catSpeed * (0.8 + Math.random() * 0.7),
+                state: 'moving',
+                stateTimer: 1 + Math.random() * 2,
+                wanderAngle: Math.random() * Math.PI * 2 // Initial wander direction
+            };
+            cats.push(newCat);
+            
+            // Play spawn sound
+            playCatSound(newCat);
+        }
+
+        function updateCats(deltaTime) {
+            const lightPos = new THREE.Vector3();
+            const targetPos = new THREE.Vector3();
+            const lightDir = new THREE.Vector3();
+            const isLightOn = spotLight.visible;
+            const catSprintDistance = 5; // Distance to start sprinting
+            const catSprintSpeedMultiplier = 1.8; // Speed increase when sprinting
+
+            if (isLightOn) {
+                spotLight.getWorldPosition(lightPos);
+                spotLight.target.getWorldPosition(targetPos);
+                lightDir.subVectors(targetPos, lightPos).normalize();
+            }
+
+            for (let i = cats.length - 1; i >= 0; i--) {
+                const cat = cats[i];
+                let isLit = false;
+
+                if (isLightOn) {
+                    const vectorToCat = new THREE.Vector3().subVectors(cat.mesh.position, lightPos);
+                    const distanceToCat = vectorToCat.length();
+                    if (distanceToCat > 0 && distanceToCat < spotLight.distance) {
+                        const angleToCat = lightDir.angleTo(vectorToCat.normalize());
+                        if (angleToCat < spotLight.angle) {
+                            isLit = true;
+                        }
+                    }
+                }
+
+                if (isLit) {
+                    scene.remove(cat.mesh);
+                    cats.splice(i, 1);
+                } else {
+                    const playerPos2D = player.position.clone();
+                    playerPos2D.y = 0;
+                    const catPos2D = cat.mesh.position.clone();
+                    catPos2D.y = 0;
+                    const distanceToPlayer = catPos2D.distanceTo(playerPos2D);
+
+                    if (distanceToPlayer < playerRadius + cat.radius) {
+                        gameOver('CAUGHT BY THE CAT!');
+                        return;
+                    }
+
+                    if (distanceToPlayer < catSprintDistance && cat.state !== 'sprinting') {
+                        cat.state = 'sprinting';
+                        playCatSound(cat);
+                    }
+
+                    // --- State Machine for Pausing/Moving (only if not sprinting) ---
+                    if (cat.state !== 'sprinting') {
+                        cat.stateTimer -= deltaTime;
+                        if (cat.stateTimer <= 0) {
+                            if (cat.state === 'moving') {
+                                cat.state = 'pausing';
+                                cat.stateTimer = 0.5 + Math.random() * 1.0; // Pause for 0.5-1.5s
+                            } else { // state is 'pausing'
+                                cat.state = 'moving';
+                                cat.stateTimer = 1.5 + Math.random() * 2.0; // Move for 1.5-3.5s
+                            }
+                        }
+                    }
+
+                    // --- Movement Logic (only if in 'moving' or 'sprinting' state) ---
+                    if (cat.state === 'moving' || cat.state === 'sprinting') {
+                        const targetDirection = new THREE.Vector3().subVectors(player.position, cat.mesh.position);
+                        targetDirection.y = 0;
+                        targetDirection.normalize();
+
+                        let finalDirection;
+                        let currentSpeed = cat.speed;
+
+                        if (cat.state === 'sprinting') {
+                            finalDirection = targetDirection;
+                            currentSpeed *= catSprintSpeedMultiplier;
+                        } else { // 'moving' state
+                            const wanderStrength = 0.5;
+                            const wanderInfluence = 0.4;
+                            cat.wanderAngle += (Math.random() - 0.5) * wanderStrength;
+                            const wanderDirection = new THREE.Vector3(Math.cos(cat.wanderAngle), 0, Math.sin(cat.wanderAngle));
+                            finalDirection = new THREE.Vector3().lerpVectors(targetDirection, wanderDirection, wanderInfluence);
+                            finalDirection.normalize();
+                        }
+
+                        let velocity = finalDirection.multiplyScalar(currentSpeed * deltaTime);
+                        let newPos = cat.mesh.position.clone().add(velocity);
+
+                        cats.forEach(otherCat => {
+                            if (cat === otherCat) return;
+                            const distance = newPos.distanceTo(otherCat.mesh.position);
+                            const minDistance = cat.radius + otherCat.radius;
+                            if (distance < minDistance) {
+                                const overlap = minDistance - distance;
+                                const pushVector = new THREE.Vector3().subVectors(newPos, otherCat.mesh.position).normalize();
+                                newPos.add(pushVector.multiplyScalar(overlap));
+                            }
+                        });
+
+                        const finalPos = cat.mesh.position.clone();
+                        const moveX = new THREE.Vector3(newPos.x - finalPos.x, 0, 0);
+                        if (isPositionValid(finalPos.clone().add(moveX))) {
+                            finalPos.add(moveX);
+                        }
+                        const moveZ = new THREE.Vector3(0, 0, newPos.z - finalPos.z);
+                        if (isPositionValid(finalPos.clone().add(moveZ))) {
+                            finalPos.add(moveZ);
+                        }
+                        cat.mesh.position.copy(finalPos);
+                    }
+
+                    // --- Appearance (applies to all non-lit cats) ---
+                    cat.mesh.lookAt(player.position);
+
+                    cat.blinkTimer += deltaTime;
+                    const blinkInterval = 3 + Math.random() * 4;
+                    const blinkDuration = 0.15;
+
+                    if (!cat.isBlinking && cat.blinkTimer > blinkInterval) {
+                        cat.isBlinking = true;
+                        cat.mesh.children[0].visible = false; // eyeL
+                        cat.mesh.children[1].visible = false; // eyeR
+                        cat.blinkTimer = 0;
+                    }
+
+                    if (cat.isBlinking && cat.blinkTimer > blinkDuration) {
+                        cat.isBlinking = false;
+                        cat.mesh.children[0].visible = true; // eyeL
+                        cat.mesh.children[1].visible = true; // eyeR
+                        cat.blinkTimer = 0;
+                    }
+                }
+            }
+        }
+
+        function gameOver(message) {
+            renderer.setAnimationLoop(null); // Stop the game
+            document.getElementById('info').style.display = 'none';
+            const overlay = document.getElementById('gameover-overlay');
+            const messageEl = document.getElementById('gameover-message');
+            if (overlay && messageEl) {
+                messageEl.textContent = message;
+                overlay.style.display = 'flex';
+            }
+        }
+
+        function checkWinCondition() {
+            if (!exitMesh) return;
+            const distanceToExit = player.position.distanceTo(exitMesh.position);
+            if (distanceToExit < wallSize / 2) {
+                gameOver('YOU ESCAPED!');
+            }
+        }
+
+        function animate() {
+            renderer.setAnimationLoop(() => {
+                const deltaTime = clock.getDelta();
+                spawnTimer += deltaTime;
+
+                handleRotation(deltaTime);
+                handleMovement(deltaTime);
+                updateCats(deltaTime);
+                checkWinCondition();
+                updateFlashlight(deltaTime);
+
+                if (spawnTimer > catSpawnInterval) {
+                    spawnCat();
+                    spawnTimer = 0;
+                }
+
+                renderer.render(scene, camera);
+            });
+        }
+
+        function setupGame() {
+            const startOverlay = document.getElementById('start-overlay');
+            startOverlay.textContent = 'Loading...';
+
+            init(); // Sets up scene, camera, etc., but doesn't load assets
+
+            document.getElementById('new-game-button').addEventListener('click', () => {
+                location.reload();
+            });
+
+            // Load assets, and only then make the game startable
+            audioLoader.load(
+                'meow1.mp3',
+                (buffer) => { // Success callback
+                    meowSoundBuffer = buffer;
+                    startOverlay.textContent = 'Click to Start';
+                    startOverlay.style.cursor = 'pointer';
+
+                    startOverlay.addEventListener('click', async () => {
+                        startOverlay.style.display = 'none';
+                        if (audioListener && audioListener.context.state === 'suspended') {
+                            await audioListener.context.resume();
+                        }
+                        animate();
+                    }, { once: true });
+                },
+                undefined, // onProgress callback
+                (error) => { // onError callback
+                    console.error('Fatal Error: Could not load audio assets.', error);
+                    startOverlay.textContent = 'Error loading. Please refresh.';
+                    startOverlay.style.cursor = 'default';
+                }
+            );
+        }
+
+        setupGame();
+    </script>
+</body>
+</html>
