@@ -711,10 +711,10 @@
             }
 
             const catGroup = new THREE.Group();
-            const eyeSpacing = 0.25;
+            const eyeSpacing = 0.20;
             
             // Create the two sphere eyes
-            const eyeGeometry = new THREE.SphereGeometry(0.1, 8, 8); // Small sphere, low detail
+            const eyeGeometry = new THREE.SphereGeometry(0.05, 8, 8); // Small sphere, low detail
             const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
             const eyeL = new THREE.Mesh(eyeGeometry, eyeMaterial);
             const eyeR = new THREE.Mesh(eyeGeometry, eyeMaterial);
