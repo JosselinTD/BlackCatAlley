@@ -167,6 +167,44 @@
         const batteryChargeAmount = 15; // amount per "shake" (click)
         let gameIsOver = false;
         let gameOverMessage = '';
+        let vrLookInput = { x: 0, y: 0 };
+        const turnSpeed = 1.5;
+
+        function handleVRInput() {
+            const session = renderer.xr.getSession();
+            if (!session) return;
+
+            const deadzone = 0.2;
+            let leftController, rightController;
+
+            for (const source of session.inputSources) {
+                if (!source.gamepad) continue;
+                if (source.handedness === 'left') leftController = source.gamepad;
+                if (source.handedness === 'right') rightController = source.gamepad;
+            }
+
+            if (leftController) {
+                controls.forward = false;
+                controls.backward = false;
+                controls.left = false;
+                controls.right = false;
+                if (leftController.axes && leftController.axes.length >= 4) {
+                    if (leftController.axes[3] < -deadzone) controls.forward = true;
+                    if (leftController.axes[3] > deadzone) controls.backward = true;
+                    if (leftController.axes[2] < -deadzone) controls.left = true;
+                    if (leftController.axes[2] > deadzone) controls.right = true;
+                }
+            }
+
+            if (rightController) {
+                vrLookInput.x = 0;
+                if (rightController.axes && rightController.axes.length >= 4) {
+                     if (Math.abs(rightController.axes[2]) > deadzone) {
+                        vrLookInput.x = rightController.axes[2];
+                    }
+                }
+            }
+        }
 
         function init() {
             try {
@@ -901,7 +939,18 @@
                 const deltaTime = clock.getDelta();
                 spawnTimer += deltaTime;
 
-                handleRotation(deltaTime);
+                if (renderer.xr.isPresenting) {
+                    handleVRInput();
+                    // In VR, we rotate the whole player rig, not just the camera
+                    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+                    euler.setFromQuaternion(player.quaternion);
+                    euler.y -= vrLookInput.x * turnSpeed * deltaTime;
+                    player.quaternion.setFromEuler(euler);
+                } else {
+                    // Non-VR look controls
+                    handleRotation(deltaTime);
+                }
+
                 handleMovement(deltaTime);
                 updateCats(deltaTime);
                 checkWinCondition();
