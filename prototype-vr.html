@@ -48,11 +48,35 @@
             border-radius: 5px;
             cursor: pointer;
         }
+        #start-menu button {
+            font-family: monospace;
+            font-size: 1em;
+            padding: 15px 30px;
+            background: #333;
+            color: #fff;
+            border: 1px solid #fff;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            width: 300px;
+        }
+        #start-menu button:disabled {
+            background: #111;
+            color: #555;
+            border-color: #555;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
     
-    <div id="start-overlay" class="overlay">Click to Start</div>
+    <div id="start-overlay" class="overlay">
+        <div id="start-menu" style="display: none;">
+            <button id="start-game-button">Start Game</button>
+            <button id="start-vr-button">Start Game in VR</button>
+        </div>
+        <div id="loading-text">Loading...</div>
+    </div>
     <div id="gameover-overlay" class="overlay">
         <div id="gameover-message"></div>
         <button id="new-game-button">Start New Game</button>
@@ -69,80 +93,7 @@
     <div id="joystick-look-base"><div id="joystick-look-handle"></div></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script>
-        // From three.js/examples/jsm/webxr/VRButton.js
-        const VRButton = {
-            createButton: function (renderer) {
-                const button = document.createElement('button');
-                function showEnterVR() {
-                    let currentSession = null;
-                    async function onSessionStarted(session) {
-                        session.addEventListener('end', onSessionEnded);
-                        await renderer.xr.setSession(session);
-                        button.textContent = 'EXIT VR';
-                        currentSession = session;
-                    }
-                    function onSessionEnded() {
-                        currentSession.removeEventListener('end', onSessionEnded);
-                        button.textContent = 'ENTER VR';
-                        currentSession = null;
-                        // If the session ended because of a game over, show the screen
-                        if (gameIsOver) {
-                            showGameOverScreen(gameOverMessage);
-                        }
-                    }
-                    button.style.display = '';
-                    button.style.cursor = 'pointer';
-                    button.style.left = 'calc(50% - 50px)';
-                    button.style.width = '100px';
-                    button.textContent = 'ENTER VR';
-                    button.onclick = function () {
-                        if (currentSession === null) {
-                            navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] }).then(onSessionStarted);
-                        } else {
-                            currentSession.end();
-                        }
-                    };
-                }
-                function showWebXRNotFound() {
-                    button.style.display = '';
-                    button.style.cursor = 'auto';
-                    button.style.left = 'calc(50% - 75px)';
-                    button.style.width = '150px';
-                    button.textContent = 'VR NOT SUPPORTED';
-                    button.onclick = null;
-                }
-                button.id = 'VRButton';
-                button.style.display = 'none';
-                button.style.position = 'absolute';
-                button.style.bottom = '20px';
-                button.style.padding = '12px 6px';
-                button.style.border = '1px solid #fff';
-                button.style.borderRadius = '4px';
-                button.style.background = 'rgba(0,0,0,0.1)';
-                button.style.color = '#fff';
-                button.style.font = 'normal 13px sans-serif';
-                button.style.textAlign = 'center';
-                button.style.opacity = '0.5';
-                button.style.outline = 'none';
-                button.style.zIndex = '999';
-                if ('xr' in navigator) {
-                    navigator.xr.isSessionSupported('immersive-vr').then(supported => supported ? showEnterVR() : showWebXRNotFound());
-                } else {
-                    const message = document.createElement('a');
-                    if (window.isSecureContext === false) {
-                        message.href = document.location.href.replace(/^http:/, 'https:');
-                        message.innerHTML = 'WEBXR NEEDS HTTPS';
-                    } else {
-                        message.href = 'https://immersiveweb.dev/';
-                        message.innerHTML = 'WEBXR NOT AVAILABLE';
-                    }
-                    return message; // Return message element if no XR
-                }
-                return button;
-            }
-        };
-    </script>
+    
     <script>
         // --- Game Constants ---
         const moveSpeed = 5;
@@ -236,7 +187,7 @@
                 renderer.xr.enabled = true;
                 document.body.appendChild(renderer.domElement);
 
-                document.body.appendChild(VRButton.createButton(renderer));
+                
 
                 maze = generateMaze(mazeWidth, mazeHeight);
                 const mazeMesh = createMazeMesh(maze);
@@ -1037,35 +988,83 @@
 
         function setupGame() {
             const startOverlay = document.getElementById('start-overlay');
-            startOverlay.textContent = 'Loading...';
+            const startMenu = document.getElementById('start-menu');
+            const loadingText = document.getElementById('loading-text');
+            const startGameButton = document.getElementById('start-game-button');
+            const startVrButton = document.getElementById('start-vr-button');
 
-            init(); // Sets up scene, camera, etc., but doesn't load assets
+            init(); // Sets up scene, camera, etc.
 
             document.getElementById('new-game-button').addEventListener('click', () => {
                 location.reload();
             });
+
+            // Check for VR support to enable/disable the VR button
+            if ('xr' in navigator) {
+                navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+                    if (!supported) {
+                        startVrButton.disabled = true;
+                        startVrButton.textContent = 'VR NOT SUPPORTED';
+                    }
+                });
+            } else {
+                startVrButton.disabled = true;
+                startVrButton.textContent = 'WEBXR NOT AVAILABLE';
+            }
 
             // Load assets, and only then make the game startable
             audioLoader.load(
                 'meow1.mp3',
                 (buffer) => { // Success callback
                     meowSoundBuffer = buffer;
-                    startOverlay.textContent = 'Click to Start';
-                    startOverlay.style.cursor = 'pointer';
+                    // Loading finished, show menu
+                    loadingText.style.display = 'none';
+                    startMenu.style.display = 'block';
 
-                    startOverlay.addEventListener('click', async () => {
+                    // Common start logic
+                    const startGame = async () => {
                         startOverlay.style.display = 'none';
                         if (audioListener && audioListener.context.state === 'suspended') {
                             await audioListener.context.resume();
                         }
                         animate();
-                    }, { once: true });
+                    };
+
+                    // Normal start
+                    startGameButton.addEventListener('click', () => {
+                        startGame();
+                    });
+
+                    // VR start
+                    startVrButton.addEventListener('click', async () => {
+                        if (startVrButton.disabled) return;
+
+                        try {
+                            const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
+                            
+                            session.addEventListener('end', () => {
+                                // When the session ends, reload the page to go back to the menu
+                                // This is simpler than trying to manage all the state changes
+                                location.reload();
+                            });
+
+                            await renderer.xr.setSession(session);
+                            startGame();
+
+                        } catch (e) {
+                            console.error("Failed to start VR session", e);
+                            // Optionally re-enable the button or show an error
+                            startVrButton.textContent = 'VR FAILED TO START';
+                            setTimeout(() => {
+                                startVrButton.textContent = 'Start Game in VR';
+                            }, 2000);
+                        }
+                    });
                 },
                 undefined, // onProgress callback
                 (error) => { // onError callback
                     console.error('Fatal Error: Could not load audio assets.', error);
-                    startOverlay.textContent = 'Error loading. Please refresh.';
-                    startOverlay.style.cursor = 'default';
+                    loadingText.textContent = 'Error loading. Please refresh.';
                 }
             );
         }
