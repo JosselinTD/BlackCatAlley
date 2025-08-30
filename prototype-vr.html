@@ -13,8 +13,7 @@
         #joystick-move-handle { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; }
         #joystick-look-base { position: absolute; bottom: 20px; right: 20px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border-radius: 50%; display: none; }
         #joystick-look-handle { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; }
-        #battery-container { position: fixed; bottom: 180px; left: 50%; transform: translateX(-50%); width: 150px; height: 20px; border: 2px solid #fff; background-color: #333; border-radius: 5px; z-index: 10000; }
-        #battery-level { width: 100%; height: 100%; background-color: #0f0; transition: width 0.2s ease-out; }
+        
         .overlay {
             position: fixed;
             top: 0;
@@ -52,6 +51,7 @@
     </style>
 </head>
 <body>
+    
     <div id="start-overlay" class="overlay">Click to Start</div>
     <div id="gameover-overlay" class="overlay">
         <div id="gameover-message"></div>
@@ -64,7 +64,7 @@
     </div>
     <button id="recharge-button" style="position: fixed; bottom: 130px; left: calc(50% + 80px); z-index: 10001; background: #333; color: #fff; border: 1px solid #fff; padding: 10px 15px; border-radius: 5px; font-family: monospace;">Recharge</button>
     <button id="flashlight-button" style="position: fixed; bottom: 130px; left: 50%; transform: translateX(-50%); z-index: 10001; background: #555; color: #fff; border: 1px solid #fff; padding: 10px 15px; border-radius: 5px; font-family: monospace;">Flashlight</button>
-    <div id="battery-container"><div id="battery-level"></div></div>
+    
     <div id="joystick-move-base"><div id="joystick-move-handle"></div></div>
     <div id="joystick-look-base"><div id="joystick-look-handle"></div></div>
 
@@ -169,6 +169,10 @@
         let gameOverMessage = '';
         let vrLookInput = { x: 0, y: 0 };
         const turnSpeed = 1.5;
+        let hasFlashedAt50 = false;
+        let hasFlashedAt20 = false;
+        let hasFlashedAtLowLevels = { 5: false, 4: false, 3: false, 2: false, 1: false };
+        let isFlashing = false;
 
         function handleVRInput() {
             const session = renderer.xr.getSession();
@@ -303,13 +307,56 @@
 
                 document.getElementById('recharge-button').addEventListener('click', () => {
                     batteryLevel = Math.min(batteryMax, batteryLevel + batteryChargeAmount);
+                    const batteryPercent = (batteryLevel / batteryMax) * 100;
+
+                    // Reset flash warnings based on new battery level
+                    if (batteryPercent > 50) {
+                        hasFlashedAt50 = false;
+                    }
+                    if (batteryPercent > 20) {
+                        hasFlashedAt20 = false;
+                    }
+                    for (let i = 5; i >= 1; i--) {
+                        if (batteryPercent > i) {
+                            hasFlashedAtLowLevels[i] = false;
+                        }
+                    }
                 });
             } catch (e) {
                 console.error(e);
             }
         }
 
+        function flashLight(count) {
+            if (isFlashing) return;
+            isFlashing = true;
+
+            const originalVisibility = spotLight.visible;
+            let toggles = 0;
+            const numToggles = count * 2;
+            const interval = 100; // Time for each state (on or off)
+
+            function toggle() {
+                if (toggles >= numToggles) {
+                    spotLight.visible = originalVisibility;
+                    isFlashing = false;
+                    return;
+                }
+
+                spotLight.visible = !spotLight.visible;
+                toggles++;
+                setTimeout(toggle, interval);
+            }
+
+            // Start by turning it off to ensure the first flash is noticeable
+            spotLight.visible = false;
+            toggles++;
+            setTimeout(toggle, interval);
+        }
+
         function updateFlashlight(deltaTime) {
+            const oldBatteryLevel = batteryLevel;
+
             if (flashlightOn) {
                 batteryLevel -= batteryDrainRate * deltaTime;
                 if (batteryLevel <= 0) {
@@ -318,16 +365,28 @@
                     spotLight.visible = false;
                 }
             }
-            
-            const batteryIndicator = document.getElementById('battery-level');
-            if(batteryIndicator) {
-                batteryIndicator.style.width = `${batteryLevel}%`;
-                if (batteryLevel < 30) {
-                    batteryIndicator.style.backgroundColor = '#f00'; // Red
-                } else if (batteryLevel < 60) {
-                    batteryIndicator.style.backgroundColor = '#ff0'; // Yellow
-                } else {
-                    batteryIndicator.style.backgroundColor = '#0f0'; // Green
+
+            const batteryPercent = (batteryLevel / batteryMax) * 100;
+            const oldBatteryPercent = (oldBatteryLevel / batteryMax) * 100;
+
+            // Check for 50%
+            if (oldBatteryPercent > 50 && batteryPercent <= 50 && !hasFlashedAt50) {
+                flashLight(3);
+                hasFlashedAt50 = true;
+            }
+
+            // Check for 20%
+            if (oldBatteryPercent > 20 && batteryPercent <= 20 && !hasFlashedAt20) {
+                flashLight(3);
+                hasFlashedAt20 = true;
+            }
+
+            // Check for 1-5%
+            for (let i = 5; i >= 1; i--) {
+                if (oldBatteryPercent > i && batteryPercent <= i && !hasFlashedAtLowLevels[i]) {
+                    flashLight(3);
+                    hasFlashedAtLowLevels[i] = true;
+                    break; // only trigger one flash check per frame
                 }
             }
         }
@@ -963,7 +1022,9 @@
                 updateCats(deltaTime);
                 checkWinCondition();
                 updateFlashlight(deltaTime);
-                spotLight.visible = flashlightOn; // Always sync light visibility with state
+                if (!isFlashing) {
+                    spotLight.visible = flashlightOn; // Always sync light visibility with state
+                }
 
                 if (spawnTimer > catSpawnInterval) {
                     spawnCat();
